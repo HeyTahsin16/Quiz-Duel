@@ -1,0 +1,4 @@
+PHASE: 6 (/memorynote/phase-6.txt)
+LAST DONE: Redesigned UI into a game-style Main Menu (Play -> Collection -> Settings with sound sliders -> Credits with Debug Gallery inside) and uniform in-game HUD bar
+NEXT: Ready for next user request
+BLOCKERS: None

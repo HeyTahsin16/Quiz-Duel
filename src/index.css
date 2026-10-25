@@ -1,0 +1,314 @@
+@import "tailwindcss";
+
+@layer base {
+	:root {
+		--font-sans:
+			"Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		--font-pixel: var(--font-sans);
+		--font-pixel-body: var(--font-sans);
+	}
+
+	body {
+		font-family: var(--font-sans);
+		background-color: #141926;
+		color: #f1f5f9;
+	}
+}
+
+.font-pixel {
+	font-family: var(--font-sans);
+	font-weight: 800;
+	letter-spacing: 0.02em;
+}
+
+.font-pixel-body {
+	font-family: var(--font-sans);
+	font-weight: 600;
+}
+
+.pixelated {
+	image-rendering: pixelated;
+}
+
+/* ============================================================================
+   FlatUI 9-Slice Pixel Art Primitives (/assets/flatui/UI_Flat_*.png)
+   ============================================================================ */
+
+/* Outer Frames (96x64 source, 6px bevel -> 12px/18px border) */
+.flat-frame-silver {
+	border-style: solid;
+	border-width: 12px;
+	border-image-source: url("/assets/flatui/UI_Flat_Frame01a.png");
+	border-image-slice: 6 fill;
+	border-image-width: 12px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-frame-blue {
+	border-style: solid;
+	border-width: 12px;
+	border-image-source: url("/assets/flatui/UI_Flat_Frame02a.png");
+	border-image-slice: 6 fill;
+	border-image-width: 12px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-frame-gold {
+	border-style: solid;
+	border-width: 12px;
+	border-image-source: url("/assets/flatui/UI_Flat_Frame03a.png");
+	border-image-slice: 6 fill;
+	border-image-width: 12px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+/* Frame Markers (64x32 source, top tab/header style) */
+.flat-marker-silver {
+	border-style: solid;
+	border-width: 8px 8px 4px 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameMarker01a.png");
+	border-image-slice: 4 4 2 4 fill;
+	border-image-width: 8px 8px 4px 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-marker-blue {
+	border-style: solid;
+	border-width: 8px 8px 4px 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameMarker02a.png");
+	border-image-slice: 4 4 2 4 fill;
+	border-image-width: 8px 8px 4px 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-marker-gold {
+	border-style: solid;
+	border-width: 8px 8px 4px 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameMarker03a.png");
+	border-image-slice: 4 4 2 4 fill;
+	border-image-width: 8px 8px 4px 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+/* Frame Slots (32x32 source, 4px bevel -> 8px/10px border) */
+.flat-slot-silver {
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameSlot01a.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-slot-silver-inset {
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameSlot01b.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-slot-dark {
+	background-color: #131826;
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameSlot01c.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-slot-blue {
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameSlot02a.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-slot-blue-bright {
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameSlot02b.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-slot-blue-dark {
+	background-color: #0e192d;
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameSlot02c.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-slot-gold {
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameSlot03a.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-slot-orange {
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameSlot03b.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-slot-gold-dark {
+	background-color: #21180d;
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_FrameSlot03c.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+/* Regular White Title Boxes (64x20 source UI_Flat_Banner03a.png) */
+.flat-banner-offset-bl,
+.flat-banner-ribbon-up,
+.flat-banner-ribbon-down,
+.flat-banner-offset-tl {
+	border-style: solid;
+	border-width: 8px 12px 10px 12px;
+	border-image-source: url("/assets/flatui/UI_Flat_Banner03a.png");
+	border-image-slice: 4 6 5 6 fill;
+	border-image-width: 8px 12px 10px 12px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+	color: #141824;
+}
+
+/* 4-State Interactive Pixel Buttons (UI_Flat_Button01a_1..4 & 02a_1..4, 32x32 full-height 4px slice -> 8px border) */
+.flat-btn-bevel {
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_Button01a_1.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+	color: #141824;
+	transition:
+		transform 80ms ease,
+		filter 80ms ease;
+}
+
+.flat-btn-bevel:hover:not(:disabled) {
+	border-image-source: url("/assets/flatui/UI_Flat_Button01a_2.png");
+	filter: brightness(1.03);
+}
+
+.flat-btn-bevel:active:not(:disabled) {
+	border-image-source: url("/assets/flatui/UI_Flat_Button01a_3.png");
+	transform: translateY(1px);
+}
+
+.flat-btn-bevel:disabled {
+	border-image-source: url("/assets/flatui/UI_Flat_Button01a_4.png");
+	opacity: 0.55;
+}
+
+.flat-btn-round {
+	border-style: solid;
+	border-width: 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_Button02a_1.png");
+	border-image-slice: 4 fill;
+	border-image-width: 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+	color: #141824;
+	transition:
+		transform 80ms ease,
+		filter 80ms ease;
+}
+
+.flat-btn-round:hover:not(:disabled) {
+	border-image-source: url("/assets/flatui/UI_Flat_Button02a_2.png");
+	filter: brightness(1.03);
+}
+
+.flat-btn-round:active:not(:disabled) {
+	border-image-source: url("/assets/flatui/UI_Flat_Button02a_3.png");
+	transform: translateY(1px);
+}
+
+.flat-btn-round:disabled {
+	border-image-source: url("/assets/flatui/UI_Flat_Button02a_4.png");
+	opacity: 0.55;
+}
+
+/* Input Fields (UI_Flat_InputField01a / 02a, 64x32 source) */
+.flat-input {
+	border-style: solid;
+	border-width: 8px 8px 10px 8px;
+	border-image-source: url("/assets/flatui/UI_Flat_InputField01a.png");
+	border-image-slice: 4 4 5 4 fill;
+	border-image-width: 8px 8px 10px 8px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+	color: #141824;
+}
+
+.flat-input:focus {
+	border-image-source: url("/assets/flatui/UI_Flat_InputField02a.png");
+	outline: none;
+}
+
+/* Bar Track (UI_Flat_Bar06a.png, 32x8 source) */
+.flat-bar-track {
+	border-style: solid;
+	border-width: 4px 6px 4px 6px;
+	border-image-source: url("/assets/flatui/UI_Flat_Bar06a.png");
+	border-image-slice: 2 3 2 3 fill;
+	border-image-width: 4px 6px 4px 6px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+/* Selection Reticles (UI_Flat_Select01a_1.png & 02a_1.png, 32x32 source) */
+.flat-select-reticle {
+	border-style: solid;
+	border-width: 16px;
+	border-image-source: url("/assets/flatui/UI_Flat_Select01a_1.png");
+	border-image-slice: 10 10 10 10;
+	border-image-width: 16px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
+
+.flat-select-reticle-alt {
+	border-style: solid;
+	border-width: 16px;
+	border-image-source: url("/assets/flatui/UI_Flat_Select02a_1.png");
+	border-image-slice: 10 10 10 10;
+	border-image-width: 16px;
+	border-image-repeat: stretch;
+	image-rendering: pixelated;
+}
