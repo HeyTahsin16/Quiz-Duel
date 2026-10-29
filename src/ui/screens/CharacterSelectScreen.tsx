@@ -12,7 +12,8 @@ export interface CharacterSelectScreenProps {
 	onSelectP1: (id: CharacterId) => void
 	onSelectP2: (id: CharacterId) => void
 	onProceedToLobby: () => void
-	onStartQuickBattle: () => void
+	onStartQuickBattle: (mode: 'vs-bot' | 'hotseat-open') => void
+	onBackToMenu?: () => void
 }
 
 const SIGNATURE_PREVIEW_CARDS: Record<
@@ -56,10 +57,10 @@ export function CharacterSelectScreen({
 	onSelectP2,
 	onProceedToLobby,
 	onStartQuickBattle,
+	onBackToMenu,
 }: CharacterSelectScreenProps) {
 	const [inspectDeckCharacter, setInspectDeckCharacter] = useState<CharacterId | null>(null)
-	const p1 = CHARACTERS[p1Character]
-	const p2 = CHARACTERS[p2Character]
+	const [showModePrompt, setShowModePrompt] = useState<boolean>(false)
 
 	const handleChoose = (seat: 1 | 2, id: CharacterId) => {
 		audioManager.playSfx('click')
@@ -88,6 +89,19 @@ export function CharacterSelectScreen({
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-3">
+					{onBackToMenu && (
+						<FlatButton
+							variant="cream"
+							size="lg"
+							icon="arrow"
+							onClick={() => {
+								audioManager.playSfx('click')
+								onBackToMenu()
+							}}
+						>
+							Main Menu
+						</FlatButton>
+					)}
 					<FlatButton
 						variant="blue"
 						size="lg"
@@ -104,11 +118,11 @@ export function CharacterSelectScreen({
 						size="lg"
 						icon="play"
 						onClick={() => {
-							audioManager.playSfx('click')
-							onStartQuickBattle()
+							audioManager.playSfx('popup-open')
+							setShowModePrompt(true)
 						}}
 					>
-						Enter Arena (1v1)
+						Enter Arena
 					</FlatButton>
 				</div>
 			</FlatPanel>
@@ -160,11 +174,6 @@ export function CharacterSelectScreen({
 										/>
 									)}
 									<PixelSprite characterId={char.id} integerScale={3} facing="right" animate />
-									<span className="mt-3 font-mono text-[11px] text-slate-300">
-										{char.voicePack
-											? `Voice: ${char.voicePack}${char.muffleVoice ? ' (1.2kHz Muffle)' : ''}`
-											: 'Voice: Silent (SFX Only)'}
-									</span>
 								</button>
 
 								{/* Bio */}
@@ -232,65 +241,23 @@ export function CharacterSelectScreen({
 									</FlatButton>
 								</div>
 
-								<div className="grid grid-cols-2 gap-2">
-									<FlatButton
-										variant="dark"
-										size="sm"
-										icon="point"
-										onClick={() => {
-											audioManager.playSfx('popup-open')
-											setInspectDeckCharacter(char.id)
-										}}
-										className="w-full"
-									>
-										24-Card Deck
-									</FlatButton>
-									<FlatButton
-										variant="dark"
-										size="sm"
-										icon="play"
-										onClick={() => audioManager.playCharacterVoice(char.id, 'attack')}
-										className="w-full"
-									>
-										Test Voice
-									</FlatButton>
-								</div>
+								<FlatButton
+									variant="dark"
+									size="sm"
+									icon="point"
+									onClick={() => {
+										audioManager.playSfx('popup-open')
+										setInspectDeckCharacter(char.id)
+									}}
+									className="w-full"
+								>
+									24-Card Deck
+								</FlatButton>
 							</div>
 						</FlatPanel>
 					)
 				})}
 			</div>
-
-			{/* Current Matchup Summary Bar */}
-			<FlatPanel
-				variant="silver"
-				wellVariant="dark"
-				wellClassName="flex flex-wrap items-center justify-between gap-6 p-4"
-			>
-				<div className="flex items-center gap-4">
-					<PixelSprite characterId={p1Character} integerScale={2} facing="right" />
-					<div>
-						<div className="font-pixel text-xs text-amber-300">P1: {p1.name}</div>
-						<div className="mt-1 text-xs text-slate-300">
-							Affinity: {SUBJECT_BORDER_PALETTE[p1.affinity].label} · Weakness:{' '}
-							{SUBJECT_BORDER_PALETTE[p1.weakness].label}
-						</div>
-					</div>
-				</div>
-
-				<FlatBanner variant="offset-bl">VS</FlatBanner>
-
-				<div className="flex items-center gap-4">
-					<div className="text-right">
-						<div className="font-pixel text-xs text-sky-300">P2: {p2.name}</div>
-						<div className="mt-1 text-xs text-slate-300">
-							Affinity: {SUBJECT_BORDER_PALETTE[p2.affinity].label} · Weakness:{' '}
-							{SUBJECT_BORDER_PALETTE[p2.weakness].label}
-						</div>
-					</div>
-					<PixelSprite characterId={p2Character} integerScale={2} facing="left" />
-				</div>
-			</FlatPanel>
 
 			{/* 24-Card Fixed Deck Inspector Modal */}
 			{inspectDeckCharacter && (
@@ -343,6 +310,71 @@ export function CharacterSelectScreen({
 							))}
 						</div>
 					</FlatPanel>
+				</div>
+			)}
+
+			{/* Pre-Battle Mode Selection Prompt Modal (Player vs Bot or 1v1 Local) */}
+			{showModePrompt && (
+				<div
+					onClick={() => {
+						audioManager.playSfx('popup-close')
+						setShowModePrompt(false)
+					}}
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+				>
+					<div onClick={(e) => e.stopPropagation()} className="w-full max-w-[460px]">
+						<FlatPanel variant="gold" wellVariant="dark" className="w-full" wellClassName="p-6 space-y-5">
+							<div className="flex items-center justify-between border-b border-slate-800 pb-3">
+								<FlatBanner variant="offset-bl">SELECT BATTLE MODE</FlatBanner>
+								<FlatButton
+									variant="dark"
+									size="sm"
+									icon="cross"
+									onClick={() => {
+										audioManager.playSfx('popup-close')
+										setShowModePrompt(false)
+									}}
+								>
+									Cancel
+								</FlatButton>
+							</div>
+
+							<p className="text-xs leading-relaxed text-slate-300">
+								Choose how you want to play with <strong className="text-amber-300">{CHARACTERS[p1Character].name}</strong>{' '}
+								(P1) vs <strong className="text-sky-300">{CHARACTERS[p2Character].name}</strong> (P2):
+							</p>
+
+							<div className="flex flex-col gap-3">
+								<FlatButton
+									variant="gold"
+									size="lg"
+									icon="play"
+									onClick={() => {
+										audioManager.playSfx('select')
+										setShowModePrompt(false)
+										onStartQuickBattle('vs-bot')
+									}}
+									className="w-full justify-center"
+								>
+									Player vs Bot
+								</FlatButton>
+
+								<FlatButton
+									variant="blue"
+									size="lg"
+									icon="play"
+									onClick={() => {
+										audioManager.playSfx('select')
+										setShowModePrompt(false)
+										onStartQuickBattle('hotseat-open')
+									}}
+									className="w-full justify-center"
+								>
+									1v1 Local
+								</FlatButton>
+							</div>
+						</FlatPanel>
+					</div>
 				</div>
 			)}
 		</div>

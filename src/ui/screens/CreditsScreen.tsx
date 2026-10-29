@@ -4,31 +4,16 @@ import {FlatBanner, FlatButton, FlatPanel, FlatWell} from '../components/FlatUi'
 import {PixelSprite} from '../components/PixelSprite'
 
 export interface CreditsScreenProps {
-	onBackToMenu: () => void
 	onOpenDebugGallery: () => void
 }
 
-export function CreditsScreen({onBackToMenu, onOpenDebugGallery}: CreditsScreenProps) {
+export function CreditsScreen({onOpenDebugGallery}: CreditsScreenProps) {
 	return (
 		<div className="mx-auto max-w-[980px] space-y-6 px-6 py-8">
 			<FlatPanel variant="gold" wellVariant="dark" wellClassName="p-6 md:p-8 space-y-6">
-				<div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
-					<div>
-						<FlatBanner variant="offset-bl">CREDITS &amp; ATTRIBUTIONS</FlatBanner>
-						<h1 className="mt-3 font-pixel text-xl text-white">Quiz Duel — 1v1 Tactical STEM Card Battler</h1>
-					</div>
-
-					<FlatButton
-						variant="cream"
-						size="sm"
-						icon="arrow"
-						onClick={() => {
-							audioManager.playSfx('cancel')
-							onBackToMenu()
-						}}
-					>
-						Back to Main Menu
-					</FlatButton>
+				<div className="border-b border-slate-800 pb-4">
+					<FlatBanner variant="offset-bl">CREDITS &amp; ATTRIBUTIONS</FlatBanner>
+					<h1 className="mt-3 font-pixel text-xl text-white">Quiz Duel — 1v1 Tactical STEM Card Battler</h1>
 				</div>
 
 				{/* Voice Cast Showcase */}

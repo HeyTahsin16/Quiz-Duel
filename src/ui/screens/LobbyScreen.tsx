@@ -13,14 +13,12 @@ import {
 	subscribeToRoom,
 } from '../../firebase/multiplayer'
 import {FlatBanner, FlatButton, FlatPanel, FlatWell} from '../components/FlatUi'
-import {PixelSprite} from '../components/PixelSprite'
 
 export interface LobbyScreenProps {
 	p1Character: CharacterId
 	p2Character: CharacterId
 	authUser: User | null
-	onBackToSelect: () => void
-	onStartLocalBattle: (roomCode: string) => void
+	onBackToFighters?: () => void
 	onStartOnlineBattle: (roomCode: string, seat: MultiplayerSeat, room?: RoomDocument) => void
 }
 
@@ -28,8 +26,7 @@ export function LobbyScreen({
 	p1Character,
 	p2Character,
 	authUser,
-	onBackToSelect,
-	onStartLocalBattle,
+	onBackToFighters,
 	onStartOnlineBattle,
 }: LobbyScreenProps) {
 	const [roomCode, setRoomCode] = useState<string>('QD7X9K')
@@ -162,11 +159,22 @@ export function LobbyScreen({
 			>
 				<div>
 					<FlatBanner variant="offset-bl">MATCH LOBBY</FlatBanner>
-					<p className="mt-2 text-sm text-slate-300">
-						Host or join a live 1v1 Firestore room by 6-character code, or start an instant local duel.
-					</p>
+					<p className="mt-2 text-sm text-slate-300">Host or join a live 1v1 online room by 6-character code.</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-3">
+					{onBackToFighters && (
+						<FlatButton
+							variant="cream"
+							size="md"
+							icon="arrow"
+							onClick={() => {
+								audioManager.playSfx('click')
+								onBackToFighters()
+							}}
+						>
+							Back to Fighters
+						</FlatButton>
+					)}
 					{authUser ? (
 						<FlatWell variant="dark" className="flex items-center gap-3 px-3 py-1.5 text-xs">
 							<span className="text-emerald-300">
@@ -181,10 +189,6 @@ export function LobbyScreen({
 							Sign in with Google
 						</FlatButton>
 					)}
-
-					<FlatButton variant="cream" size="md" icon="arrow" onClick={onBackToSelect}>
-						Change Fighters
-					</FlatButton>
 				</div>
 			</FlatPanel>
 
@@ -204,7 +208,7 @@ export function LobbyScreen({
 						</div>
 
 						<div className="flat-input flex items-center justify-between px-3 py-2">
-							<span className="font-pixel text-lg tracking-widest text-[#141824] tabular-nums">{roomCode}</span>
+							<span className="font-pixel text-lg tracking-widest text-amber-300 tabular-nums">{roomCode}</span>
 							<div className="flex items-center gap-2">
 								<FlatButton variant="gold" size="sm" icon={copiedCode ? 'check' : 'point'} onClick={handleCopyCode}>
 									{copiedCode ? 'Copied!' : 'Copy'}
@@ -235,7 +239,7 @@ export function LobbyScreen({
 						)}
 					</div>
 
-					<div className="space-y-2.5 pt-2">
+					<div className="pt-2">
 						<FlatButton
 							variant="cream"
 							size="lg"
@@ -245,16 +249,6 @@ export function LobbyScreen({
 							className="w-full"
 						>
 							{hostedRoom ? `Re-Host Online Room ${roomCode}` : `Create Online Room ${roomCode}`}
-						</FlatButton>
-
-						<FlatButton
-							variant="dark"
-							size="md"
-							icon="arrow"
-							onClick={() => onStartLocalBattle(roomCode)}
-							className="w-full"
-						>
-							Play Offline / Local (1P vs Bot or 2P Hot-Seat)
 						</FlatButton>
 					</div>
 				</FlatPanel>
@@ -273,7 +267,7 @@ export function LobbyScreen({
 							value={joinInput}
 							onChange={(e) => setJoinInput(sanitizeRoomCode(e.target.value))}
 							placeholder="ENTER 6-CHAR CODE (E.G. QD7X9K)"
-							className="flat-input w-full px-3 py-2.5 font-pixel text-sm uppercase tracking-widest text-[#141824] placeholder:text-slate-500"
+							className="flat-input w-full px-3 py-2.5 font-pixel text-sm uppercase tracking-widest text-white placeholder:text-slate-300"
 						/>
 
 						<p className="text-xs leading-relaxed text-slate-300">
@@ -294,21 +288,6 @@ export function LobbyScreen({
 					</FlatButton>
 				</FlatPanel>
 			</div>
-
-			{/* Selected Fighters Preview */}
-			<FlatPanel variant="silver" wellVariant="dark" wellClassName="flex items-center justify-around p-5">
-				<div className="flex flex-col items-center">
-					<PixelSprite characterId={p1Character} integerScale={3} facing="right" />
-					<div className="mt-2 font-pixel text-xs text-amber-300">Seat 1 (Host): {CHARACTERS[p1Character].name}</div>
-				</div>
-				<FlatBanner variant="offset-bl">VS</FlatBanner>
-				<div className="flex flex-col items-center">
-					<PixelSprite characterId={p2Character} integerScale={3} facing="left" />
-					<div className="mt-2 font-pixel text-xs text-sky-300">
-						Seat 2 (Challenger): {CHARACTERS[p2Character].name}
-					</div>
-				</div>
-			</FlatPanel>
 		</div>
 	)
 }

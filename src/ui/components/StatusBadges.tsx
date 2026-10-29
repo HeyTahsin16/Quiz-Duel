@@ -1,8 +1,10 @@
+import {useEffect, useRef, useState} from 'react'
 import type {PlayerPowers} from '../../engine/powers'
 
 export interface StatusBadgesProps {
 	powers: PlayerPowers
 	phoenixUsed?: boolean
+	align?: 'left' | 'right'
 }
 
 interface BadgeDisplayItem {
@@ -257,15 +259,34 @@ export function collectActiveBadges(powers: PlayerPowers, phoenixUsed = false): 
 	return items
 }
 
-export function StatusBadges({powers, phoenixUsed = false}: StatusBadgesProps) {
+export function StatusBadges({powers, phoenixUsed = false, align = 'left'}: StatusBadgesProps) {
 	const badges = collectActiveBadges(powers, phoenixUsed)
+	const [hoveredKey, setHoveredKey] = useState<string | null>(null)
+	const [pinnedKey, setPinnedKey] = useState<string | null>(null)
+	const containerRef = useRef<HTMLDivElement | null>(null)
+
+	useEffect(() => {
+		if (!pinnedKey) return
+		const handlePointerDown = (e: PointerEvent) => {
+			if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+				setPinnedKey(null)
+			}
+		}
+		window.addEventListener('pointerdown', handlePointerDown)
+		return () => window.removeEventListener('pointerdown', handlePointerDown)
+	}, [pinnedKey])
 
 	if (badges.length === 0) {
 		return <div className="min-h-[26px] font-mono text-[11px] text-slate-400">No active status effects</div>
 	}
 
+	const activeTooltipKey = pinnedKey ?? hoveredKey
+
 	return (
-		<div className="flex min-h-[26px] flex-wrap items-center gap-1.5">
+		<div
+			ref={containerRef}
+			className={`flex min-h-[26px] flex-wrap items-center gap-1.5 ${align === 'right' ? 'justify-end' : 'justify-start'}`}
+		>
 			{badges.map((b) => {
 				const slotClass =
 					b.category === 'debuff'
@@ -274,15 +295,52 @@ export function StatusBadges({powers, phoenixUsed = false}: StatusBadgesProps) {
 							? 'flat-slot-gold text-[#141824]'
 							: 'flat-slot-blue text-white'
 
+				const isTooltipOpen = activeTooltipKey === b.key
+				const categoryBadgeClass =
+					b.category === 'debuff'
+						? 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+						: b.category === 'permanent'
+							? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+							: 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+
 				return (
-					<span
+					<div
 						key={b.key}
-						title={b.tooltip}
-						className={`inline-flex items-center gap-1 px-1.5 py-0.5 font-pixel text-[10px] ${slotClass}`}
+						className="relative inline-flex"
+						onMouseEnter={() => setHoveredKey(b.key)}
+						onMouseLeave={() => setHoveredKey((prev) => (prev === b.key ? null : prev))}
 					>
-						<span>{b.label}</span>
-						<span className="font-mono text-[10px] font-bold">{b.valueText}</span>
-					</span>
+						<button
+							type="button"
+							onClick={() => setPinnedKey((prev) => (prev === b.key ? null : b.key))}
+							aria-expanded={isTooltipOpen}
+							className={`inline-flex cursor-pointer items-center gap-1 px-1.5 py-0.5 font-pixel text-[10px] select-none transition-transform hover:brightness-110 active:translate-y-px ${slotClass}`}
+						>
+							<span>{b.label}</span>
+							<span className="font-mono text-[10px] font-bold">{b.valueText}</span>
+						</button>
+
+						{isTooltipOpen && (
+							<div
+								role="tooltip"
+								className={`pointer-events-none absolute top-full z-50 mt-1.5 w-56 rounded border border-slate-600 bg-slate-950/95 p-2.5 text-left shadow-2xl ${
+									align === 'right' ? 'right-0' : 'left-0'
+								}`}
+							>
+								<div className="mb-1 flex items-center justify-between gap-2">
+									<span className="font-pixel text-[10px] text-white">
+										{b.label} ({b.valueText})
+									</span>
+									<span
+										className={`rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase ${categoryBadgeClass}`}
+									>
+										{b.category}
+									</span>
+								</div>
+								<p className="font-sans text-[11px] leading-snug text-slate-200">{b.tooltip}</p>
+							</div>
+						)}
+					</div>
 				)
 			})}
 		</div>

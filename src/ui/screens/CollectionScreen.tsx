@@ -18,12 +18,281 @@ import {NineSliceCard} from '../components/NineSliceCard'
 import {PixelSprite} from '../components/PixelSprite'
 
 export interface CollectionScreenProps {
-	onBackToMenu: () => void
-	onSelectFighterForPlay: (id: CharacterId) => void
+	onBackToMenu?: () => void
 }
 
-export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: CollectionScreenProps) {
-	const [activeTab, setActiveTab] = useState<'cards' | 'decks' | 'questions'>('cards')
+export interface AttributeEntry {
+	badge: string
+	name: string
+	category: 'mechanic' | 'permanent' | 'buff' | 'debuff'
+	summary: string
+}
+
+const ATTRIBUTE_ENTRIES: AttributeEntry[] = [
+	// Core Card Mechanics & Keywords
+	{
+		badge: 'BLOCK',
+		name: 'Block',
+		category: 'mechanic',
+		summary:
+			'Absorbs incoming attack damage before HP is lost. Resets to 0 at the start of your next turn unless preserved by Barricade or Blur.',
+	},
+	{
+		badge: 'DRAW',
+		name: 'Draw',
+		category: 'mechanic',
+		summary:
+			'Draws cards from your Draw Pile into your Hand (max 10 cards in hand). When the Draw Pile is empty, your Discard Pile automatically shuffles into a new Draw Pile.',
+	},
+	{
+		badge: 'EXHAUST',
+		name: 'Exhaust',
+		category: 'mechanic',
+		summary:
+			'When resolved, the card is moved to the Exhaust Pile for the rest of the battle instead of going to the Discard Pile.',
+	},
+	{
+		badge: 'POWER (P)',
+		name: 'Power Card',
+		category: 'mechanic',
+		summary:
+			'Grants a persistent passive ability for the remainder of the duel. Power cards only take effect after being played and automatically Exhaust.',
+	},
+	{
+		badge: 'UPGRADE (+)',
+		name: 'Upgraded Card (+)',
+		category: 'mechanic',
+		summary:
+			'Enhanced Frame B version of a card. Every 4 correct STEM quiz answers upgrades a random card in your deck (+damage, +block, +stacks, or reduced Mana cost).',
+	},
+	{
+		badge: 'MANA',
+		name: 'Mana',
+		category: 'mechanic',
+		summary:
+			'Action points used to throw cards (refills to 3 Mana at the start of each turn). Cards cost 0–3 Mana to throw.',
+	},
+	{
+		badge: 'STEAL',
+		name: 'Life Steal',
+		category: 'mechanic',
+		summary:
+			'Heals your fighter based on unblocked damage dealt to the opponent. Negated while afflicted by Hemostasis (NO-STEAL).',
+	},
+	{
+		badge: 'TRUE DMG',
+		name: 'True Damage / HP Loss',
+		category: 'mechanic',
+		summary: 'Bypasses the target’s Block completely and subtracts directly from HP.',
+	},
+	{
+		badge: 'CURE',
+		name: 'Cure',
+		category: 'mechanic',
+		summary:
+			'Biology cleansing mechanic that removes active debuffs (Poison, Parasite, Weak, Vulnerable, Corrode, Anti-heal, Hemostasis, and Strength loss).',
+	},
+	{
+		badge: 'BURST',
+		name: 'Poison Burst',
+		category: 'mechanic',
+		summary: 'Deals immediate damage equal to the opponent’s current Poison stacks.',
+	},
+	{
+		badge: 'AFFINITY',
+		name: 'Subject Affinity & Weakness',
+		category: 'mechanic',
+		summary:
+			'Cards matching your champion’s Affinity gain +25% outgoing effect and reduce incoming damage of that subject by 25%. Weakness cards deal -25% outgoing and take +25% incoming.',
+	},
+	{
+		badge: 'DEFENSE',
+		name: 'Quiz Defense (Nullify / 35%)',
+		category: 'mechanic',
+		summary:
+			'Answering a thrown card’s STEM quiz correctly within the timer completely nullifies Normal & Uncommon cards, or reduces Epic & Legendary cards to 35% power.',
+	},
+
+	// Permanent Powers
+	{
+		badge: 'STR',
+		name: 'Strength',
+		category: 'permanent',
+		summary:
+			'Adds +N damage to every attack hit you deal for the rest of the battle. Can become negative if reduced by debuffs.',
+	},
+	{
+		badge: 'DEMON',
+		name: 'Demon Form (P)',
+		category: 'permanent',
+		summary: 'Gain +N Strength automatically at the start of each of your turns.',
+	},
+	{
+		badge: 'METAL',
+		name: 'Metallicize (P)',
+		category: 'permanent',
+		summary: 'Gain N Block automatically at the end of each of your turns.',
+	},
+	{
+		badge: 'BARRICADE',
+		name: 'Barricade (P)',
+		category: 'permanent',
+		summary: 'Your Block is never removed at the start of your turn for the rest of the battle.',
+	},
+	{
+		badge: 'JUGG',
+		name: 'Juggernaut (P)',
+		category: 'permanent',
+		summary: 'Whenever you gain Block, automatically deal N damage to the opponent.',
+	},
+	{
+		badge: 'FUMES',
+		name: 'Noxious Fumes (P)',
+		category: 'permanent',
+		summary: 'Apply N Poison to the opponent automatically at the start of each of your turns.',
+	},
+	{
+		badge: 'ENVENOM',
+		name: 'Envenom (P)',
+		category: 'permanent',
+		summary: 'Whenever your attack deals unblocked damage, apply N Poison to the opponent.',
+	},
+	{
+		badge: 'REPAIR',
+		name: 'Self-Repair (P)',
+		category: 'permanent',
+		summary: 'Heal N HP automatically at the end of each of your turns.',
+	},
+	{
+		badge: 'PHOENIX',
+		name: 'Phoenix (P)',
+		category: 'permanent',
+		summary: 'Once this battle, if your HP would reach 0, immediately revive at 30% (or 45%+) of your Max HP.',
+	},
+
+	// Buffs
+	{
+		badge: 'FLEX',
+		name: 'Temporary Strength',
+		category: 'buff',
+		summary: 'Gain +N Strength for the current turn only; removed at the end of the turn.',
+	},
+	{
+		badge: 'BLUR',
+		name: 'Blur (1-Turn Barricade)',
+		category: 'buff',
+		summary: 'Your Block is not removed at the start of your next turn.',
+	},
+	{
+		badge: 'COAT',
+		name: 'Venomous Coat',
+		category: 'buff',
+		summary: 'Your next unblocked attack hit applies +N Poison to the opponent.',
+	},
+	{
+		badge: 'WARD',
+		name: 'Ward',
+		category: 'buff',
+		summary: 'Negates and blocks the next N debuff applications targeting you.',
+	},
+	{
+		badge: 'REFLECT',
+		name: 'Reflect (Mirror Calculus)',
+		category: 'buff',
+		summary: 'Until your next turn, reflects P% of attack damage taken back at the attacker.',
+	},
+	{
+		badge: 'APPARITION',
+		name: 'Apparition',
+		category: 'buff',
+		summary: 'Until the start of your next turn, any single hit or HP loss you take is reduced to at most 1 HP.',
+	},
+	{
+		badge: '2X TAP',
+		name: 'Double Tap',
+		category: 'buff',
+		summary: 'Your next Maths attack card played this turn resolves twice.',
+	},
+	{
+		badge: 'REGEN',
+		name: 'Regeneration',
+		category: 'buff',
+		summary: 'Heal N HP at the start of each of your turns for R rounds.',
+	},
+	{
+		badge: 'HIBERNATE',
+		name: 'Hibernate (Next Turn Heal)',
+		category: 'buff',
+		summary: 'Heal N HP at the start of your next turn.',
+	},
+	{
+		badge: 'CHARGE',
+		name: 'Next Turn Mana',
+		category: 'buff',
+		summary: 'Gain +N bonus Mana at the start of your next turn.',
+	},
+	{
+		badge: 'STUN-IMM',
+		name: 'Stun Immune',
+		category: 'buff',
+		summary: 'Cannot be Stunned for N rounds (automatically granted for 2 rounds after recovering from Stun).',
+	},
+
+	// Debuffs
+	{
+		badge: 'POISON',
+		name: 'Poison',
+		category: 'debuff',
+		summary: 'Lose N HP (ignores Block) at the start of your turn, then Poison decreases by 1.',
+	},
+	{
+		badge: 'PARASITE',
+		name: 'Parasite',
+		category: 'debuff',
+		summary:
+			'Lose N HP (ignores Block) at the start of your turn, then Parasite increases by 1 each turn! Only a Biology Cure removes it.',
+	},
+	{
+		badge: 'WEAK',
+		name: 'Weak',
+		category: 'debuff',
+		summary: 'Deal 25% less attack damage for N rounds.',
+	},
+	{
+		badge: 'VULN',
+		name: 'Vulnerable',
+		category: 'debuff',
+		summary: 'Take 50% more attack damage for N rounds.',
+	},
+	{
+		badge: 'CORRODE',
+		name: 'Corrode',
+		category: 'debuff',
+		summary: 'Gain 25% less Block from cards for N rounds.',
+	},
+	{
+		badge: 'ANTI-HEAL',
+		name: 'Anti-Heal',
+		category: 'debuff',
+		summary: 'All healing received is reduced by 50% for N rounds.',
+	},
+	{
+		badge: 'NO-STEAL',
+		name: 'Hemostasis (No Life Steal)',
+		category: 'debuff',
+		summary: 'Life Steal effects heal 0 HP for N rounds.',
+	},
+	{
+		badge: 'STUNNED',
+		name: 'Stun',
+		category: 'debuff',
+		summary: 'Your next turn is skipped, then you gain Stun Immune for 2 rounds.',
+	},
+]
+
+export function CollectionScreen({onBackToMenu}: CollectionScreenProps) {
+	const [activeTab, setActiveTab] = useState<'cards' | 'decks' | 'questions' | 'attributes'>('cards')
+	const [attributeFilter, setAttributeFilter] = useState<'all' | AttributeEntry['category']>('all')
 	const [subjectFilter, setSubjectFilter] = useState<Subject | 'all'>('all')
 	const [rarityFilter, setRarityFilter] = useState<Rarity | 'all'>('all')
 	const [showUpgraded, setShowUpgraded] = useState<boolean>(false)
@@ -49,6 +318,11 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 		})
 	}, [rarityFilter, subjectFilter])
 
+	const filteredAttributes = useMemo(() => {
+		if (attributeFilter === 'all') return ATTRIBUTE_ENTRIES
+		return ATTRIBUTE_ENTRIES.filter((entry) => entry.category === attributeFilter)
+	}, [attributeFilter])
+
 	const activeCharMeta = CHARACTERS[selectedCharacter]
 
 	return (
@@ -60,10 +334,14 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 				wellClassName="flex flex-wrap items-center justify-between gap-4 p-4"
 			>
 				<div className="flex flex-wrap items-center gap-2.5">
+					{onBackToMenu && (
+						<FlatButton variant="cream" size="md" icon="arrow" onClick={onBackToMenu}>
+							Main Menu
+						</FlatButton>
+					)}
 					<FlatButton
 						variant={activeTab === 'cards' ? 'gold' : 'dark'}
 						size="md"
-						icon="point"
 						onClick={() => {
 							audioManager.playSfx('click')
 							setActiveTab('cards')
@@ -74,7 +352,6 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 					<FlatButton
 						variant={activeTab === 'decks' ? 'gold' : 'dark'}
 						size="md"
-						icon="play"
 						onClick={() => {
 							audioManager.playSfx('click')
 							setActiveTab('decks')
@@ -85,7 +362,6 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 					<FlatButton
 						variant={activeTab === 'questions' ? 'gold' : 'dark'}
 						size="md"
-						icon="check"
 						onClick={() => {
 							audioManager.playSfx('click')
 							setActiveTab('questions')
@@ -93,19 +369,17 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 					>
 						160 STEM Question Bank
 					</FlatButton>
+					<FlatButton
+						variant={activeTab === 'attributes' ? 'gold' : 'dark'}
+						size="md"
+						onClick={() => {
+							audioManager.playSfx('click')
+							setActiveTab('attributes')
+						}}
+					>
+						Attributes ({ATTRIBUTE_ENTRIES.length})
+					</FlatButton>
 				</div>
-
-				<FlatButton
-					variant="cream"
-					size="sm"
-					icon="arrow"
-					onClick={() => {
-						audioManager.playSfx('cancel')
-						onBackToMenu()
-					}}
-				>
-					Back to Main Menu
-				</FlatButton>
 			</FlatPanel>
 
 			{/* Filter Bar for Cards & Questions */}
@@ -214,9 +488,10 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 										exhaust={def.exhaust}
 										power={def.power}
 										integerScale={2}
+										scaleMultiplier={1.2}
 									/>
 									{def.reducedText && (
-										<div className="w-[192px] text-center font-mono text-[10px] text-amber-300/90">
+										<div className="w-[154px] text-center font-mono text-[10px] text-amber-300/90">
 											Quiz Defended: {def.reducedText}
 										</div>
 									)}
@@ -238,7 +513,7 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 									key={char.id}
 									variant={isSelected ? 'gold' : 'silver'}
 									wellVariant={isSelected ? 'gold-dark' : 'dark'}
-									wellClassName="p-4 flex flex-col justify-between gap-3"
+									wellClassName="p-4 flex flex-col justify-center"
 								>
 									<button
 										type="button"
@@ -246,7 +521,7 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 											audioManager.playSfx('select')
 											setSelectedCharacter(char.id)
 										}}
-										className="flex cursor-pointer items-center gap-3.5 text-left"
+										className="flex w-full cursor-pointer items-center gap-3.5 text-left"
 									>
 										<PixelSprite characterId={char.id} integerScale={2} facing="right" />
 										<div>
@@ -260,18 +535,6 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 											</div>
 										</div>
 									</button>
-									<FlatButton
-										variant={isSelected ? 'cream' : 'dark'}
-										size="sm"
-										icon="play"
-										onClick={() => {
-											audioManager.playSfx('click')
-											onSelectFighterForPlay(char.id)
-										}}
-										className="w-full"
-									>
-										Play as {char.name}
-									</FlatButton>
 								</FlatPanel>
 							)
 						})}
@@ -289,17 +552,6 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 									| 10 Normal · 8 Uncommon · 4 Epic · 2 Legendary
 								</p>
 							</div>
-							<FlatButton
-								variant="cream"
-								size="md"
-								icon="play"
-								onClick={() => {
-									audioManager.playSfx('select')
-									onSelectFighterForPlay(selectedCharacter)
-								}}
-							>
-								Choose {activeCharMeta.name} for Battle
-							</FlatButton>
 						</div>
 
 						<div className="flex flex-wrap items-center justify-center gap-4 py-2">
@@ -316,6 +568,7 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 									exhaust={card.exhaust}
 									power={card.power}
 									integerScale={2}
+									scaleMultiplier={1.2}
 								/>
 							))}
 						</div>
@@ -359,6 +612,119 @@ export function CollectionScreen({onBackToMenu, onSelectFighterForPlay}: Collect
 						))}
 					</div>
 				</FlatPanel>
+			)}
+
+			{/* TAB 4: Attributes (Card Mechanics, Permanent Powers, Buffs, & Debuffs) */}
+			{activeTab === 'attributes' && (
+				<div className="space-y-5">
+					<FlatPanel
+						variant="blue"
+						wellVariant="blue-dark"
+						wellClassName="flex flex-wrap items-center justify-between gap-3 p-4"
+					>
+						<div className="flex flex-wrap items-center gap-2">
+							<span className="font-pixel text-[10px] text-slate-300">CATEGORY:</span>
+							<FlatButton
+								variant={attributeFilter === 'all' ? 'cream' : 'dark'}
+								size="sm"
+								onClick={() => {
+									audioManager.playSfx('click')
+									setAttributeFilter('all')
+								}}
+							>
+								All ({ATTRIBUTE_ENTRIES.length})
+							</FlatButton>
+							<FlatButton
+								variant={attributeFilter === 'mechanic' ? 'gold' : 'dark'}
+								size="sm"
+								onClick={() => {
+									audioManager.playSfx('click')
+									setAttributeFilter('mechanic')
+								}}
+							>
+								Card Mechanics (12)
+							</FlatButton>
+							<FlatButton
+								variant={attributeFilter === 'permanent' ? 'gold' : 'dark'}
+								size="sm"
+								onClick={() => {
+									audioManager.playSfx('click')
+									setAttributeFilter('permanent')
+								}}
+							>
+								Permanent Powers (9)
+							</FlatButton>
+							<FlatButton
+								variant={attributeFilter === 'buff' ? 'blue' : 'dark'}
+								size="sm"
+								onClick={() => {
+									audioManager.playSfx('click')
+									setAttributeFilter('buff')
+								}}
+							>
+								Buffs (11)
+							</FlatButton>
+							<FlatButton
+								variant={attributeFilter === 'debuff' ? 'silver' : 'dark'}
+								size="sm"
+								onClick={() => {
+									audioManager.playSfx('click')
+									setAttributeFilter('debuff')
+								}}
+							>
+								Debuffs (8)
+							</FlatButton>
+						</div>
+					</FlatPanel>
+
+					<FlatPanel variant="silver" wellVariant="dark" wellClassName="p-6 space-y-4">
+						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+							<FlatBanner variant="offset-bl">
+								ATTRIBUTES &amp; STATUS EFFECTS ({filteredAttributes.length} OF {ATTRIBUTE_ENTRIES.length})
+							</FlatBanner>
+							<span className="text-xs text-slate-300">
+								Complete reference of card keywords, permanent powers, turn buffs, and round-decaying debuffs.
+							</span>
+						</div>
+
+						<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+							{filteredAttributes.map((attr) => {
+								const badgeClass =
+									attr.category === 'debuff'
+										? 'flat-slot-orange text-white'
+										: attr.category === 'permanent'
+											? 'flat-slot-gold text-[#141824]'
+											: attr.category === 'buff'
+												? 'flat-slot-blue text-white'
+												: 'flat-slot-dark border border-amber-400/50 text-amber-300'
+
+								const categoryLabel =
+									attr.category === 'mechanic'
+										? 'CARD MECHANIC'
+										: attr.category === 'permanent'
+											? 'PERMANENT POWER (P)'
+											: attr.category === 'buff'
+												? 'BUFF'
+												: 'DEBUFF'
+
+								return (
+									<FlatWell key={`${attr.category}-${attr.badge}`} variant="dark" className="space-y-2 p-4">
+										<div className="flex flex-wrap items-center justify-between gap-2">
+											<div className="flex items-center gap-2.5">
+												<span className={`inline-flex items-center px-2 py-0.5 font-pixel text-[10px] ${badgeClass}`}>
+													{attr.badge}
+												</span>
+												<span className="font-pixel text-xs text-white">{attr.name}</span>
+											</div>
+											<span className="font-mono text-[10px] tracking-wider text-slate-400">{categoryLabel}</span>
+										</div>
+										<p className="text-xs leading-relaxed text-slate-200">{attr.summary}</p>
+									</FlatWell>
+								)
+							})}
+						</div>
+					</FlatPanel>
+				</div>
 			)}
 		</div>
 	)

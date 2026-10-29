@@ -1,4 +1,3 @@
-import type React from 'react'
 import {useEffect, useState} from 'react'
 import {
 	type FrameType,
@@ -21,12 +20,12 @@ export interface NineSliceCardProps {
 	exhaust?: boolean
 	power?: boolean
 	integerScale?: 2 | 3 | 4
+	scaleMultiplier?: number
 	selected?: boolean
 	selectionOrder?: number
 	disabled?: boolean
 	showSliceGuides?: boolean
 	onClick?: () => void
-	onPeek?: (e: React.MouseEvent) => void
 }
 
 export function NineSliceCard({
@@ -40,12 +39,12 @@ export function NineSliceCard({
 	exhaust = false,
 	power = false,
 	integerScale = 3,
+	scaleMultiplier = 1,
 	selected = false,
 	selectionOrder,
 	disabled = false,
 	showSliceGuides = false,
 	onClick,
-	onPeek,
 }: NineSliceCardProps) {
 	const frameType: FrameType = upgraded ? 'B' : 'A'
 	const [bgDataUrl, setBgDataUrl] = useState<string>(() => getCachedCardFrame(frameType, rarity, subject, integerScale))
@@ -63,6 +62,8 @@ export function NineSliceCard({
 
 	const widthPx = NINE_SLICE_CONFIG.logicalCardWidth * integerScale
 	const heightPx = NINE_SLICE_CONFIG.logicalCardHeight * integerScale
+	const scaledWidthPx = Math.round(widthPx * scaleMultiplier)
+	const scaledHeightPx = Math.round(heightPx * scaleMultiplier)
 	const insetPx = NINE_SLICE_CONFIG.insets.left * integerScale
 
 	const subjectMeta = SUBJECT_BORDER_PALETTE[subject]
@@ -72,21 +73,30 @@ export function NineSliceCard({
 	return (
 		<div
 			style={{
-				width: `${widthPx}px`,
-				height: `${heightPx}px`,
+				width: `${scaledWidthPx}px`,
+				height: `${scaledHeightPx}px`,
 			}}
 			className={`relative select-none transition-transform duration-150 ${
 				onClick && !disabled ? 'hover:-translate-y-1.5' : ''
-			} ${selected ? '-translate-y-3 ring-2 ring-amber-300' : ''} ${disabled ? 'opacity-60' : ''}`}
+			} ${selected ? '-translate-y-2 ring-1 ring-amber-300/90 shadow-[0_0_8px_rgba(251,191,36,0.35)]' : ''} ${disabled ? 'opacity-60' : ''}`}
 		>
-			{onClick && !disabled && (
-				<button
-					type="button"
-					aria-label={`Select card ${displayName}`}
-					onClick={onClick}
-					className="absolute inset-0 z-15 cursor-pointer bg-transparent"
-				/>
-			)}
+			<div
+				style={{
+					width: `${widthPx}px`,
+					height: `${heightPx}px`,
+					transform: scaleMultiplier !== 1 ? `scale(${scaleMultiplier})` : undefined,
+					transformOrigin: 'top left',
+				}}
+				className="relative"
+			>
+				{onClick && !disabled && (
+					<button
+						type="button"
+						aria-label={`Select card ${displayName}`}
+						onClick={onClick}
+						className="absolute inset-0 z-15 cursor-pointer bg-transparent"
+					/>
+				)}
 			{/* Cached 9-slice pixel-art frame */}
 			{bgDataUrl && (
 				<img
@@ -207,7 +217,7 @@ export function NineSliceCard({
 					)}
 				</div>
 
-				{/* Bottom Metadata Row: Rarity · Frame C/D/E/F + Optional Peek */}
+				{/* Bottom Metadata Row: Rarity · Frame C/D/E/F + Subject */}
 				<div
 					className={` flex w-full items-center justify-between gap-1 overflow-hidden border border-white/15 bg-[#131549]/85 font-pixel ${
 						integerScale === 2
@@ -221,25 +231,11 @@ export function NineSliceCard({
 						{rarityMeta.label} · {subjectMeta.frameKey}
 					</span>
 
-					{onPeek ? (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation()
-								onPeek(e)
-							}}
-							className={`shrink-0 border border-white/30 bg-black/60 font-pixel text-amber-200 hover:border-amber-300 hover:text-white ${
-								integerScale === 2 ? 'px-1 py-0 text-[8px]' : 'px-1.5 py-0.5 text-[9px]'
-							}`}
-						>
-							Peek
-						</button>
-					) : (
-						<span style={{color: subjectMeta.highlight}} className="shrink-0 truncate">
-							{subjectMeta.label}
-						</span>
-					)}
+					<span style={{color: subjectMeta.highlight}} className="shrink-0 truncate">
+						{subjectMeta.label}
+					</span>
 				</div>
+			</div>
 			</div>
 		</div>
 	)

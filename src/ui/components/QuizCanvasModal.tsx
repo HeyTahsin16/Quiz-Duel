@@ -10,7 +10,7 @@ import {
 	RARITY_FILL_PALETTE,
 	SUBJECT_BORDER_PALETTE,
 } from '../../engine/config'
-import {FlatBanner, FlatBar, FlatButton, FlatPanel, FlatWell} from './FlatUi'
+import {FlatBanner, FlatBar, FlatPanel, FlatWell} from './FlatUi'
 import {NineSliceCard} from './NineSliceCard'
 import {PixelSprite} from './PixelSprite'
 
@@ -207,6 +207,8 @@ export function QuizCanvasModal({
 	const promptCanvasRef = useRef<HTMLCanvasElement | null>(null)
 	const choiceCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([null, null, null, null])
 	const explanationCanvasRef = useRef<HTMLCanvasElement | null>(null)
+	const onResolveRef = useRef(onResolve)
+	onResolveRef.current = onResolve
 
 	const attacker = CHARACTERS[attackerCharacter]
 	const defender = CHARACTERS[defenderCharacter]
@@ -345,17 +347,19 @@ export function QuizCanvasModal({
 		return () => window.clearTimeout(timer)
 	}, [card.rarity, commitAnswer, isBotDefender, question.correctIndex, resolvedOutcome])
 
-	// Keyboard shortcuts (1-4 / A-D, Enter/Space to continue after resolution)
+	// Automatically continue 2 seconds after the question is answered (no manual confirmation required)
+	useEffect(() => {
+		if (resolvedOutcome === null) return
+		const timer = window.setTimeout(() => {
+			onResolveRef.current(resolvedOutcome)
+		}, 2000)
+		return () => window.clearTimeout(timer)
+	}, [resolvedOutcome])
+
+	// Keyboard shortcuts (1-4 / A-D)
 	useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
-			if (resolvedOutcome !== null) {
-				if (e.key === 'Enter' || e.key === ' ') {
-					e.preventDefault()
-					onResolve(resolvedOutcome)
-				}
-				return
-			}
-			if (isBotDefender) return
+			if (resolvedOutcome !== null || isBotDefender) return
 			const key = e.key.toUpperCase()
 			if (key === '1' || key === 'A') commitAnswer(0)
 			if (key === '2' || key === 'B') commitAnswer(1)
@@ -364,7 +368,7 @@ export function QuizCanvasModal({
 		}
 		window.addEventListener('keydown', onKeyDown)
 		return () => window.removeEventListener('keydown', onKeyDown)
-	}, [commitAnswer, isBotDefender, onResolve, resolvedOutcome])
+	}, [commitAnswer, isBotDefender, resolvedOutcome])
 
 	// Render prompt and choices to <canvas>
 	useEffect(() => {
@@ -584,7 +588,7 @@ export function QuizCanvasModal({
 							))}
 						</div>
 
-						{/* Post-Answer Resolution Banner + Explanation Canvas + Continue Button */}
+						{/* Post-Answer Resolution Banner + Explanation Canvas (Auto-continues after 2s) */}
 						{resolvedOutcome !== null && (
 							<div className="space-y-3 border-t border-slate-800 pt-3">
 								<FlatWell
@@ -601,9 +605,7 @@ export function QuizCanvasModal({
 												: 'WRONG ANSWER! CARD LANDS AT FULL STRENGTH!'}
 									</div>
 
-									<FlatButton variant="cream" size="md" icon="play" onClick={() => onResolve(resolvedOutcome)}>
-										Apply &amp; Continue
-									</FlatButton>
+									<span className="font-mono text-xs text-amber-200">Continuing in 2s...</span>
 								</FlatWell>
 
 								<div className="flex justify-center overflow-x-auto">
@@ -659,46 +661,62 @@ export function QuestionPeekModal({card, seed, onClose}: QuestionPeekModalProps)
 		})
 	}, [question, subjectMeta.border, subjectMeta.highlight])
 
-	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 select-none">
-			<FlatPanel variant="silver" wellVariant="dark" className="w-full max-w-[660px]" wellClassName="p-6 space-y-4">
-				<div className="flex items-center justify-between border-b border-slate-800 pb-3">
-					<div>
-						<FlatBanner variant="offset-bl">
-							Bound Question Peek · {card.name} (#{card.id})
-						</FlatBanner>
-						<div className="mt-2 text-xs text-slate-300">
-							{subjectMeta.label} · {rarityMeta.label} · Opponent gets {question?.timerSeconds ?? 15}s to answer when
-							thrown
-						</div>
-					</div>
-					<FlatButton variant="cream" size="sm" icon="cross" onClick={onClose}>
-						Close
-					</FlatButton>
-				</div>
+	useEffect(() => {
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				onClose()
+			}
+		}
+		window.addEventListener('keydown', onKeyDown)
+		return () => window.removeEventListener('keydown', onKeyDown)
+	}, [onClose])
 
-				{question ? (
-					<div className="space-y-3">
-						<div className="flex justify-center overflow-x-auto">
-							<canvas ref={promptCanvasRef} className="max-w-full" />
-						</div>
-						<div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-							{[0, 1, 2, 3].map((idx) => (
-								<div key={idx} className="flat-slot-dark flex justify-center overflow-hidden p-1">
-									<canvas
-										ref={(el) => {
-											choiceCanvasRefs.current[idx] = el
-										}}
-										className="max-w-full"
-									/>
-								</div>
-							))}
+	return (
+		<div
+			onPointerDown={(e) => {
+				if (e.target === e.currentTarget) {
+					onClose()
+				}
+			}}
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 select-none"
+		>
+			<div onPointerDown={(e) => e.stopPropagation()} className="w-full max-w-[660px]">
+				<FlatPanel variant="silver" wellVariant="dark" className="w-full" wellClassName="p-6 space-y-4">
+					<div className="flex items-center justify-between border-b border-slate-800 pb-3">
+						<div>
+							<FlatBanner variant="offset-bl">
+								Bound Question Peek · {card.name} (#{card.id})
+							</FlatBanner>
+							<div className="mt-2 text-xs text-slate-300">
+								{subjectMeta.label} · {rarityMeta.label} · Opponent gets {question?.timerSeconds ?? 15}s to answer when
+								thrown
+							</div>
 						</div>
 					</div>
-				) : (
-					<div className="py-6 text-center text-xs text-slate-400">No bound question found on this card instance.</div>
-				)}
-			</FlatPanel>
+
+					{question ? (
+						<div className="space-y-3">
+							<div className="flex justify-center overflow-x-auto">
+								<canvas ref={promptCanvasRef} className="max-w-full" />
+							</div>
+							<div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+								{[0, 1, 2, 3].map((idx) => (
+									<div key={idx} className="flat-slot-dark flex justify-center overflow-hidden p-1">
+										<canvas
+											ref={(el) => {
+												choiceCanvasRefs.current[idx] = el
+											}}
+											className="max-w-full"
+										/>
+									</div>
+								))}
+							</div>
+						</div>
+					) : (
+						<div className="py-6 text-center text-xs text-slate-400">No bound question found on this card instance.</div>
+					)}
+				</FlatPanel>
+			</div>
 		</div>
 	)
 }

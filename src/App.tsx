@@ -1,12 +1,12 @@
 import type {User} from 'firebase/auth'
-import {useEffect, useState} from 'react'
+import {useCallback, useEffect, useState} from 'react'
 import {audioManager} from './audio/audioManager'
 import type {CharacterId} from './engine/config'
 import {subscribeAuth} from './firebase/client'
 import type {MultiplayerSeat, RoomDocument} from './firebase/multiplayer'
-import {FlatBanner, FlatButton} from './ui/components/FlatUi'
-import {SettingsContent, SettingsModal} from './ui/components/SettingsModal'
-import {BattleScreen, type MatchSummary} from './ui/screens/BattleScreen'
+import {FlatBanner, FlatButton, FlatPanel, FlatWell} from './ui/components/FlatUi'
+import {SettingsContent} from './ui/components/SettingsModal'
+import {BattleScreen, type LocalPlayMode, type MatchSummary} from './ui/screens/BattleScreen'
 import {CharacterSelectScreen} from './ui/screens/CharacterSelectScreen'
 import {CollectionScreen} from './ui/screens/CollectionScreen'
 import {CreditsScreen} from './ui/screens/CreditsScreen'
@@ -52,18 +52,52 @@ const ROUTE_BANNER_LABELS: Record<ScreenRoute, string> = {
 	debug: 'CREDITS · DEBUG GALLERY',
 }
 
+function checkIsMobilePortrait(): boolean {
+	if (typeof window === 'undefined') return false
+	const w = window.innerWidth
+	const h = window.innerHeight
+	return w < 900 && h > w
+}
+
+/**
+ * Attempts to lock the mobile screen to landscape using the Screen Orientation API
+ * (and requests fullscreen first if required by the browser).
+ */
+async function attemptLandscapeLock(requestFullscreenFirst = false): Promise<boolean> {
+	try {
+		if (requestFullscreenFirst && typeof document !== 'undefined' && !document.fullscreenElement) {
+			await document.documentElement.requestFullscreen?.()
+		}
+		const orientationApi = (
+			window.screen as Screen & {
+				orientation?: ScreenOrientation & {lock?: (mode: string) => Promise<void>}
+			}
+		)?.orientation
+		if (orientationApi?.lock) {
+			await orientationApi.lock('landscape')
+			return true
+		}
+	} catch {
+		// Browser or OS blocked programmatic orientation lock; user must rotate device physically
+	}
+	return false
+}
+
 export function App() {
 	const [route, setRoute] = useState<ScreenRoute>(() => parseHashRoute())
 	const [p1Character, setP1Character] = useState<CharacterId>('dark-ninja')
 	const [p2Character, setP2Character] = useState<CharacterId>('knight')
 	const [roomCode, setRoomCode] = useState<string>('QD7X9K')
+	const [localPlayMode, setLocalPlayMode] = useState<LocalPlayMode>('vs-bot')
 	const [isOnlineMultiplayer, setIsOnlineMultiplayer] = useState<boolean>(false)
 	const [onlineSeat, setOnlineSeat] = useState<MultiplayerSeat>(1)
 	const [activeOnlineRoom, setActiveOnlineRoom] = useState<RoomDocument | null>(null)
 	const [authUser, setAuthUser] = useState<User | null>(null)
 	const [winner, setWinner] = useState<0 | 1 | 2>(1)
 	const [matchSummary, setMatchSummary] = useState<MatchSummary | null>(null)
-	const [showSettingsOverlay, setShowSettingsOverlay] = useState<boolean>(false)
+	const [isMobilePortrait, setIsMobilePortrait] = useState<boolean>(() => checkIsMobilePortrait())
+	const [portraitDismissed, setPortraitDismissed] = useState<boolean>(false)
+	const [lockFeedback, setLockFeedback] = useState<string | null>(null)
 
 	useEffect(() => {
 		preloadAllCardFrames([2, 3, 4])
@@ -79,20 +113,35 @@ export function App() {
 		}
 		window.addEventListener('hashchange', onHashChange)
 
-		// Unlock and start background music on first user gesture
-		const unlockBgm = () => {
+		const onViewportChange = () => {
+			const portrait = checkIsMobilePortrait()
+			setIsMobilePortrait(portrait)
+			if (!portrait) {
+				setLockFeedback(null)
+			}
+		}
+		window.addEventListener('resize', onViewportChange)
+		window.addEventListener('orientationchange', onViewportChange)
+
+		// Unlock background music & attempt automatic landscape lock on first user gesture
+		const onFirstGesture = () => {
 			if (!audioManager.isMusicMuted() && !audioManager.isBgmPlaying()) {
 				audioManager.playBgm(parseHashRoute() === 'battle' ? 'battle' : 'menu')
 			}
+			if (checkIsMobilePortrait()) {
+				attemptLandscapeLock(false)
+			}
 		}
-		window.addEventListener('pointerdown', unlockBgm, {passive: true})
-		window.addEventListener('keydown', unlockBgm, {passive: true})
+		window.addEventListener('pointerdown', onFirstGesture, {passive: true})
+		window.addEventListener('keydown', onFirstGesture, {passive: true})
 
 		return () => {
 			unsubAuth()
 			window.removeEventListener('hashchange', onHashChange)
-			window.removeEventListener('pointerdown', unlockBgm)
-			window.removeEventListener('keydown', unlockBgm)
+			window.removeEventListener('resize', onViewportChange)
+			window.removeEventListener('orientationchange', onViewportChange)
+			window.removeEventListener('pointerdown', onFirstGesture)
+			window.removeEventListener('keydown', onFirstGesture)
 		}
 	}, [])
 
@@ -102,19 +151,96 @@ export function App() {
 		audioManager.playBgm(targetTrack)
 	}, [route])
 
-	const navigate = (next: ScreenRoute) => {
+	const navigate = useCallback((next: ScreenRoute) => {
 		audioManager.playSfx('click')
 		window.location.hash = next === 'title' ? '#/' : `#/${next}`
 		setRoute(next)
+	}, [])
+
+	const handleForceLandscapeClick = async () => {
+		audioManager.playSfx('select')
+		const locked = await attemptLandscapeLock(true)
+		if (!locked) {
+			setLockFeedback(
+				'Your browser or device requires manual rotation. Please unlock auto-rotate and turn your phone horizontally.',
+			)
+		}
 	}
 
 	return (
 		<div className="flex min-h-screen flex-col bg-[#141926] text-slate-100">
-			{/* Uniform In-Game Top HUD Bar on Sub-Screens (Hidden on Title Main Menu) */}
-			{route !== 'title' && (
-				<header className="flat-frame-silver bg-[#adb7c4] px-2 py-1">
-					<div className="flat-slot-dark flex flex-wrap items-center justify-between gap-4 px-4 py-2">
-						<div className="flex items-center gap-2.5">
+			{/* Forced Landscape / Rotate Device Prompt on Mobile Portrait */}
+			{isMobilePortrait && !portraitDismissed && (
+				<div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0b0f1a]/95 p-5">
+					<FlatPanel
+						variant="gold"
+						wellVariant="dark"
+						className="w-full max-w-[420px]"
+						wellClassName="flex flex-col items-center p-6 text-center space-y-5"
+					>
+						<FlatBanner variant="offset-bl">LANDSCAPE MODE REQUIRED</FlatBanner>
+
+						{/* Pixel-Art Phone Rotation Graphic */}
+						<FlatWell variant="gold-dark" className="flex items-center justify-center gap-4 px-6 py-5">
+							<div className="flex h-14 w-9 items-center justify-center border-2 border-slate-400 bg-slate-900 font-pixel text-[10px] text-slate-400">
+								9:16
+							</div>
+							<span className="font-pixel text-lg text-amber-300">→</span>
+							<div className="flex h-9 w-16 items-center justify-center border-2 border-amber-300 bg-amber-950/60 font-pixel text-[10px] text-amber-300">
+								16:9
+							</div>
+						</FlatWell>
+
+						<div className="space-y-2">
+							<h2 className="font-pixel text-base text-white">Rotate Your Device to Landscape</h2>
+							<p className="text-xs leading-relaxed text-slate-300">
+								Quiz Duel is designed for horizontal widescreen play so both champions, the 24-card hand, and the STEM
+								quiz challenge fit cleanly on screen.
+							</p>
+						</div>
+
+						{lockFeedback && (
+							<FlatWell variant="blue-dark" className="w-full p-3 text-xs text-amber-200">
+								{lockFeedback}
+							</FlatWell>
+						)}
+
+						<div className="flex w-full flex-col gap-2.5 pt-1">
+							<FlatButton
+								variant="cream"
+								size="lg"
+								icon="play"
+								onClick={handleForceLandscapeClick}
+								className="w-full justify-center"
+							>
+								Force Landscape Mode
+							</FlatButton>
+
+							<FlatButton
+								variant="dark"
+								size="sm"
+								onClick={() => {
+									audioManager.playSfx('cancel')
+									setPortraitDismissed(true)
+								}}
+								className="w-full justify-center"
+							>
+								Continue in Current View
+							</FlatButton>
+						</div>
+					</FlatPanel>
+				</div>
+			)}
+
+			{/* Single Uniform In-Game Top HUD Bar on Sub-Screens (Hidden on Title Main Menu, Settings, Collection, Character Select, Lobby, and Battle) */}
+			{route !== 'title' &&
+				route !== 'settings' &&
+				route !== 'collection' &&
+				route !== 'select' &&
+				route !== 'lobby' &&
+				route !== 'battle' && (
+					<header className="flat-frame-silver bg-[#adb7c4] px-2 py-1">
+						<div className="flat-slot-dark flex flex-wrap items-center justify-between gap-4 px-4 py-2">
 							<FlatButton
 								variant="cream"
 								size="sm"
@@ -122,51 +248,22 @@ export function App() {
 								onClick={() => {
 									if (route === 'debug') {
 										navigate('credits')
-									} else if (route === 'lobby') {
-										navigate('select')
 									} else {
 										navigate('title')
 									}
 								}}
 							>
-								{route === 'debug' ? 'Back to Credits' : route === 'lobby' ? 'Back to Fighters' : 'Main Menu'}
+								{route === 'debug' ? 'Back to Credits' : 'Main Menu'}
 							</FlatButton>
 
-							{(route === 'debug' || route === 'lobby') && (
-								<FlatButton variant="dark" size="sm" onClick={() => navigate('title')}>
-									Main Menu
-								</FlatButton>
-							)}
+							<FlatBanner variant="offset-bl" className="px-3 py-0.5 text-[11px]">
+								{ROUTE_BANNER_LABELS[route]}
+							</FlatBanner>
+
+							<div className="flex min-w-[110px] items-center justify-end gap-2" />
 						</div>
-
-						<FlatBanner variant="offset-bl" className="px-3 py-0.5 text-[11px]">
-							{ROUTE_BANNER_LABELS[route]}
-						</FlatBanner>
-
-						<div className="flex items-center gap-2">
-							{route !== 'collection' && route !== 'battle' && (
-								<FlatButton variant="gold" size="sm" icon="point" onClick={() => navigate('collection')}>
-									Collection
-								</FlatButton>
-							)}
-
-							{route !== 'settings' && (
-								<FlatButton
-									variant="blue"
-									size="sm"
-									icon="stripe"
-									onClick={() => {
-										audioManager.playSfx('popup-open')
-										setShowSettingsOverlay(true)
-									}}
-								>
-									Settings
-								</FlatButton>
-							)}
-						</div>
-					</div>
-				</header>
-			)}
+					</header>
+				)}
 
 			{/* Main Screen Content */}
 			<main className="flex-1">
@@ -176,10 +273,6 @@ export function App() {
 						onOpenCollection={() => navigate('collection')}
 						onOpenSettings={() => navigate('settings')}
 						onOpenCredits={() => navigate('credits')}
-						onSelectCharacter={(id) => {
-							setP1Character(id)
-							navigate('select')
-						}}
 					/>
 				)}
 
@@ -190,45 +283,31 @@ export function App() {
 						onSelectP1={setP1Character}
 						onSelectP2={setP2Character}
 						onProceedToLobby={() => navigate('lobby')}
-						onStartQuickBattle={() => {
+						onStartQuickBattle={(mode) => {
+							setLocalPlayMode(mode)
 							setIsOnlineMultiplayer(false)
 							navigate('battle')
 						}}
+						onBackToMenu={() => navigate('title')}
 					/>
 				)}
 
-				{route === 'collection' && (
-					<CollectionScreen
-						onBackToMenu={() => navigate('title')}
-						onSelectFighterForPlay={(id) => {
-							setP1Character(id)
-							navigate('select')
-						}}
-					/>
-				)}
+				{route === 'collection' && <CollectionScreen onBackToMenu={() => navigate('title')} />}
 
 				{route === 'settings' && (
 					<div className="mx-auto flex max-w-[900px] flex-col items-center px-6 py-8">
-						<SettingsContent onClose={() => navigate('title')} />
+						<SettingsContent onBackToMenu={() => navigate('title')} />
 					</div>
 				)}
 
-				{route === 'credits' && (
-					<CreditsScreen onBackToMenu={() => navigate('title')} onOpenDebugGallery={() => navigate('debug')} />
-				)}
+				{route === 'credits' && <CreditsScreen onOpenDebugGallery={() => navigate('debug')} />}
 
 				{route === 'lobby' && (
 					<LobbyScreen
 						p1Character={p1Character}
 						p2Character={p2Character}
 						authUser={authUser}
-						onBackToSelect={() => navigate('select')}
-						onStartLocalBattle={(code) => {
-							setRoomCode(code)
-							setIsOnlineMultiplayer(false)
-							setActiveOnlineRoom(null)
-							navigate('battle')
-						}}
+						onBackToFighters={() => navigate('select')}
 						onStartOnlineBattle={(code, seat, roomDoc) => {
 							setRoomCode(code)
 							setOnlineSeat(seat)
@@ -248,9 +327,11 @@ export function App() {
 						p1Character={p1Character}
 						p2Character={p2Character}
 						roomCode={roomCode}
+						localPlayMode={localPlayMode}
 						isOnlineMultiplayer={isOnlineMultiplayer}
 						onlineSeat={onlineSeat}
 						initialRoom={activeOnlineRoom}
+						onBackToMenu={() => navigate('title')}
 						onFinishBattle={(winSeat, summary) => {
 							setWinner(winSeat)
 							setMatchSummary(summary ?? null)
@@ -272,9 +353,6 @@ export function App() {
 
 				{route === 'debug' && <DebugGalleryScreen />}
 			</main>
-
-			{/* Global In-Game Settings Overlay (Sound Sliders accessible anytime) */}
-			{showSettingsOverlay && <SettingsModal onClose={() => setShowSettingsOverlay(false)} />}
 		</div>
 	)
 }

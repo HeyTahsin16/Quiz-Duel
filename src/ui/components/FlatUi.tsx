@@ -197,8 +197,11 @@ export function FlatButton({
 export interface FlatBarProps {
 	value: number
 	max: number
+	shieldValue?: number
 	fillTone?: 'green' | 'red' | 'gold' | 'cream' | 'teal'
 	heightClass?: string
+	label?: string
+	valueText?: string
 }
 
 const BAR_FILL_PATHS: Record<NonNullable<FlatBarProps['fillTone']>, string> = {
@@ -211,10 +214,12 @@ const BAR_FILL_PATHS: Record<NonNullable<FlatBarProps['fillTone']>, string> = {
 
 /**
  * Renders a pixel-art progress bar using `UI_Flat_Bar06a.png` for the recessed frame track
- * and `UI_Flat_BarFill01a..f.png` for the interior fill bar.
+ * and `UI_Flat_BarFill01a..f.png` for the interior fill bar, with an optional blue shield bar
+ * rendered directly on top covering the health bar when `shieldValue > 0`.
  */
-export function FlatBar({value, max, fillTone = 'green', heightClass = 'h-5'}: FlatBarProps) {
+export function FlatBar({value, max, shieldValue = 0, fillTone = 'green', heightClass = 'h-5'}: FlatBarProps) {
 	const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
+	const shieldPct = max > 0 && shieldValue > 0 ? Math.max(0, Math.min(100, (shieldValue / max) * 100)) : 0
 	const fillSrc = BAR_FILL_PATHS[fillTone]
 
 	return (
@@ -227,6 +232,16 @@ export function FlatBar({value, max, fillTone = 'green', heightClass = 'h-5'}: F
 				}}
 				className="pixelated h-full transition-all duration-150"
 			/>
+			{shieldPct > 0 && (
+				<div
+					style={{
+						width: `${shieldPct}%`,
+						backgroundImage: `url("${BAR_FILL_PATHS.teal}")`,
+						backgroundSize: '100% 100%',
+					}}
+					className="pixelated absolute inset-y-0 left-0 z-10 h-full bg-sky-500/35 transition-all duration-150"
+				/>
+			)}
 		</div>
 	)
 }
@@ -245,7 +260,7 @@ export interface FlatManaPipsProps {
 export function FlatManaPips({currentMana, maxMana, reservedMana = 0}: FlatManaPipsProps) {
 	const slots = Array.from({length: maxMana}, (_, idx) => idx)
 	return (
-		<div className="flex items-center gap-1.5">
+		<div className="flex shrink-0 items-center gap-1">
 			{slots.map((slotIdx) => {
 				const isAvailable = slotIdx < currentMana
 				const isReserved = reservedMana > 0 && slotIdx >= currentMana - reservedMana && slotIdx < currentMana
@@ -267,7 +282,7 @@ export function FlatManaPips({currentMana, maxMana, reservedMana = 0}: FlatManaP
 							backgroundImage: `url("${slotSrc}")`,
 							backgroundSize: '100% 100%',
 						}}
-						className="pixelated inline-flex h-6 w-6 items-center justify-center bg-[#101522]"
+						className="pixelated inline-flex h-5 w-5 items-center justify-center bg-[#101522]"
 					>
 						<img
 							src={pipSrc}
@@ -275,7 +290,7 @@ export function FlatManaPips({currentMana, maxMana, reservedMana = 0}: FlatManaP
 							aria-hidden="true"
 							draggable={false}
 							referrerPolicy="no-referrer"
-							className="pixelated h-3 w-3 select-none"
+							className="pixelated h-2.5 w-2.5 select-none"
 						/>
 					</span>
 				)

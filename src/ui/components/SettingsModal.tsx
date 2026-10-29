@@ -4,6 +4,7 @@ import {FlatBanner, FlatBar, FlatButton, FlatPanel, FlatWell} from './FlatUi'
 
 export interface SettingsPanelProps {
 	onClose?: () => void
+	onBackToMenu?: () => void
 	isModal?: boolean
 }
 
@@ -11,7 +12,7 @@ interface VolumeSliderRowProps {
 	label: string
 	sublabel: string
 	value: number
-	fillTone: 'gold' | 'green' | 'teal' | 'cream'
+	fillTone: 'gold' | 'green' | 'teal' | 'red' | 'cream'
 	disabled?: boolean
 	onChange: (nextValue: number) => void
 	onTest?: () => void
@@ -90,7 +91,7 @@ function VolumeSliderRow({
 	)
 }
 
-export function SettingsContent({onClose}: SettingsPanelProps) {
+export function SettingsContent({onClose, onBackToMenu, isModal = false}: SettingsPanelProps) {
 	const [settings, setSettings] = useState(() => audioManager.getVolumeSettings())
 	const [activeTrack, setActiveTrack] = useState<BgmTrackId>(() => audioManager.getCurrentBgmTrack())
 
@@ -125,7 +126,12 @@ export function SettingsContent({onClose}: SettingsPanelProps) {
 					<FlatButton variant="dark" size="sm" onClick={handleResetDefaults}>
 						Reset Defaults
 					</FlatButton>
-					{onClose && (
+					{!isModal && onBackToMenu && (
+						<FlatButton variant="cream" size="sm" icon="arrow" onClick={onBackToMenu}>
+							Main Menu
+						</FlatButton>
+					)}
+					{isModal && onClose && (
 						<FlatButton
 							variant="cream"
 							size="sm"
@@ -216,7 +222,7 @@ export function SettingsContent({onClose}: SettingsPanelProps) {
 					label="Character Voices Volume"
 					sublabel="Combat voice lines (including Dark Ninja's 1.2 kHz muffled filter)"
 					value={settings.voiceVolume}
-					fillTone="cream"
+					fillTone="red"
 					disabled={settings.muted}
 					onChange={(v) => audioManager.setVoiceVolume(v)}
 					onTest={() => audioManager.playCharacterVoice('dark-ninja', 'attack')}

@@ -9,7 +9,6 @@ import {
 	DEFAULT_BATTLE_MAP_ID,
 	ENGINE_CONFIG,
 	type SpriteAnimationState,
-	SUBJECT_BORDER_PALETTE,
 } from '../../engine/config'
 import createNewGame, {type GameInstance} from '../../engine/game'
 import {
@@ -24,7 +23,7 @@ import {
 import {BattleArenaStage, PlayerMapCropStage} from '../components/BattleArenaStage'
 import {FlatBanner, FlatBar, FlatButton, FlatIcon, FlatManaPips, FlatPanel, FlatWell} from '../components/FlatUi'
 import {NineSliceCard} from '../components/NineSliceCard'
-import {QuestionPeekModal, QuizCanvasModal} from '../components/QuizCanvasModal'
+import {QuizCanvasModal} from '../components/QuizCanvasModal'
 import {StatusBadges} from '../components/StatusBadges'
 import {formatLiveCardText} from '../utils/cardTextFormatter'
 
@@ -40,17 +39,20 @@ export interface MatchSummary {
 	actionCount: number
 }
 
+export type LocalPlayMode = 'vs-bot' | 'hotseat-open' | 'hotseat-curtain'
+
 export interface BattleScreenProps {
 	p1Character: CharacterId
 	p2Character: CharacterId
 	roomCode: string
+	localPlayMode?: LocalPlayMode
 	isOnlineMultiplayer?: boolean
 	onlineSeat?: MultiplayerSeat
 	initialRoom?: RoomDocument | null
+	onBackToMenu?: () => void
 	onFinishBattle: (winner: 0 | 1 | 2, summary?: MatchSummary) => void
 }
 
-type LocalPlayMode = 'hotseat-open' | 'hotseat-curtain' | 'vs-bot'
 type PileModalState = {playerIndex: PlayerIndex; pile: 'draw' | 'discard' | 'exhaust'} | null
 
 function getRestingIdleState(charId: CharacterId, isActiveTurn: boolean): SpriteAnimationState {
@@ -64,22 +66,23 @@ export function BattleScreen({
 	p1Character,
 	p2Character,
 	roomCode,
+	localPlayMode = 'vs-bot',
 	isOnlineMultiplayer = false,
 	onlineSeat = 1,
 	initialRoom = null,
+	onBackToMenu,
 	onFinishBattle,
 }: BattleScreenProps) {
 	const gameRef = useRef<GameInstance | null>(null)
 	const [matchSeed, setMatchSeed] = useState<number>(() => initialRoom?.seed ?? Math.floor(Date.now() % 1000000) + 101)
-	const [playMode, setPlayMode] = useState<LocalPlayMode>('vs-bot')
+	const playMode: LocalPlayMode = localPlayMode
 	const [onlineRoom, setOnlineRoom] = useState<RoomDocument | null>(initialRoom)
 	const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[]>([])
 	const [hasThrownThisTurn, setHasThrownThisTurn] = useState<boolean>(false)
 	const [curtainDismissedForTurn, setCurtainDismissedForTurn] = useState<number>(1)
-	const [peekCard, setPeekCard] = useState<CardInstance | null>(null)
 	const [pileModal, setPileModal] = useState<PileModalState>(null)
+	const [isPauseMenuOpen, setIsPauseMenuOpen] = useState<boolean>(false)
 	const [statusMessage, setStatusMessage] = useState<string | null>(null)
-	const [opponentSilenceSeconds, setOpponentSilenceSeconds] = useState<number>(0)
 	const [cameraView, setCameraView] = useState<'panoramic' | 'split'>('panoramic')
 	const effectiveP1Char: CharacterId = onlineRoom?.hostCharacter ?? p1Character
 	const effectiveP2Char: CharacterId = onlineRoom?.guestCharacter ?? p2Character
@@ -108,7 +111,6 @@ export function BattleScreen({
 			setSelectedInstanceIds([])
 			setHasThrownThisTurn(false)
 			setCurtainDismissedForTurn(1)
-			setPeekCard(null)
 			setPileModal(null)
 			setStatusMessage(null)
 			setP1Anim(char0 === 'reaper' ? 'turnStart' : 'idle')
@@ -186,7 +188,6 @@ export function BattleScreen({
 	// Online presence heartbeat (every 30s) + 60-second disconnect forfeit monitor (Section 5)
 	useEffect(() => {
 		if (!isOnlineMultiplayer || !onlineRoom || onlineRoom.status !== 'playing') {
-			setOpponentSilenceSeconds(0)
 			return
 		}
 
@@ -202,13 +203,11 @@ export function BattleScreen({
 			const owingSeat: MultiplayerSeat = owingPlayerIndex === 0 ? 1 : 2
 
 			if (owingSeat === onlineSeat) {
-				setOpponentSilenceSeconds(0)
 				return
 			}
 
 			const lastSeenMs = owingSeat === 1 ? onlineRoom.hostLastSeenMs : onlineRoom.guestLastSeenMs
 			const elapsedSec = Math.max(0, Math.floor((Date.now() - lastSeenMs) / 1000))
-			setOpponentSilenceSeconds(elapsedSec)
 
 			if (elapsedSec >= ENGINE_CONFIG.disconnectForfeitSeconds && gameState.status !== 'finished') {
 				const g = gameRef.current
@@ -356,10 +355,14 @@ export function BattleScreen({
 	const activePlayer = gameState.players[activeIdx]
 	const p1State = gameState.players[0]
 	const p2State = gameState.players[1]
-	const p1Meta = CHARACTERS[effectiveP1Char]
-	const p2Meta = CHARACTERS[effectiveP2Char]
 
-	const myPlayerIndex: PlayerIndex = isOnlineMultiplayer ? (onlineSeat === 1 ? 0 : 1) : activeIdx
+	const myPlayerIndex: PlayerIndex = isOnlineMultiplayer
+		? onlineSeat === 1
+			? 0
+			: 1
+		: playMode === 'vs-bot'
+			? 0
+			: activeIdx
 	const displayedHandPlayer = gameState.players[myPlayerIndex]
 	const isMyTurnToAct = isOnlineMultiplayer
 		? onlineRoom?.status === 'playing' && activeIdx === myPlayerIndex && gameState.status === 'playing'
@@ -471,24 +474,27 @@ export function BattleScreen({
 		)
 	}
 
-	const handleResolveQuiz = (outcome: QuizAnswerOutcome) => {
-		dispatchAction({
-			type: 'resolveQuizAnswer',
-			answer: outcome,
-		})
-	}
+	const handleResolveQuiz = useCallback(
+		(outcome: QuizAnswerOutcome) => {
+			dispatchAction({
+				type: 'resolveQuizAnswer',
+				answer: outcome,
+			})
+		},
+		[dispatchAction],
+	)
 
-	const handleEndTurn = () => {
+	const handleEndTurn = useCallback(() => {
 		if (!isMyTurnToAct) return
 		audioManager.playSfx('swipe')
 		dispatchAction({type: 'endTurn'}, {resetSelection: true, resetThrown: true})
-	}
+	}, [dispatchAction, isMyTurnToAct])
 
-	const handleSkipTurn = () => {
+	const handleSkipTurn = useCallback(() => {
 		if (!isMyTurnToAct || hasThrownThisTurn) return
 		audioManager.playSfx('swipe')
 		dispatchAction({type: 'skipTurn'}, {resetSelection: true, resetThrown: true})
-	}
+	}, [dispatchAction, hasThrownThisTurn, isMyTurnToAct])
 
 	const handleForfeit = (playerIndex: PlayerIndex) => {
 		audioManager.playSfx('cancel')
@@ -532,320 +538,427 @@ export function BattleScreen({
 		gameState.status === 'playing' &&
 		curtainDismissedForTurn !== gameState.turn
 
+	// Automatically end turn (or skip turn if no card was thrown) when the active player cannot throw any more cards
+	useEffect(() => {
+		if (!isMyTurnToAct) return
+		if (showPassCurtain) return
+		if (hasAnyPlayableCard) return
+
+		const timer = window.setTimeout(() => {
+			audioManager.playSfx('swipe')
+			if (hasThrownThisTurn || gameState.throwsThisTurn > 0) {
+				dispatchAction({type: 'endTurn'}, {resetSelection: true, resetThrown: true})
+			} else {
+				dispatchAction({type: 'skipTurn'}, {resetSelection: true, resetThrown: true})
+			}
+		}, 450)
+
+		return () => window.clearTimeout(timer)
+	}, [
+		dispatchAction,
+		gameState.throwsThisTurn,
+		hasAnyPlayableCard,
+		hasThrownThisTurn,
+		isMyTurnToAct,
+		showPassCurtain,
+	])
+
 	return (
-		<div className="mx-auto max-w-[1400px] select-none space-y-5 px-4 py-5 md:px-6">
-			{/* Top Match Status & Mode Bar */}
-			<FlatPanel
-				variant="silver"
-				wellVariant="dark"
-				wellClassName="flex flex-wrap items-center justify-between gap-4 px-4 py-3"
-			>
-				<div className="flex flex-wrap items-center gap-3 font-pixel text-xs">
-					<FlatBanner variant="offset-bl" className="px-2 py-0.5 text-[10px]">
-						{isOnlineMultiplayer ? `ONLINE ROOM ${roomCode} (YOU: P${onlineSeat})` : `LOCAL ROOM ${roomCode}`}
-					</FlatBanner>
-					<span className="text-slate-100">
-						ROUND {gameState.round} (TURN {gameState.turn})
-					</span>
-					<span aria-hidden="true" className="text-slate-500">
-						·
-					</span>
-					<span className={activeIdx === 0 ? 'text-amber-300' : 'text-sky-300'}>
-						ACTIVE: P{activeIdx + 1} ({activePlayer.name.toUpperCase()})
-					</span>
-					{gameState.round >= ENGINE_CONFIG.fatigueStartRound && (
-						<span className="flat-slot-orange px-2 py-0.5 text-[10px] text-white">
-							FATIGUE ACTIVE (-{2 * (gameState.round - 24)} HP/TURN)
-						</span>
+		<div
+			className={
+				cameraView === 'panoramic'
+					? 'relative h-screen w-full overflow-hidden select-none'
+					: 'mx-auto max-w-[1400px] select-none space-y-5 px-4 py-5 md:px-6'
+			}
+		>
+			{/* Floating Status Banners (Online Waiting / Last Quiz Result) */}
+			{(isOnlineMultiplayer && onlineRoom?.status === 'waiting') ||
+			(isOnlineMultiplayer && currentQuizEntry && !isMyQuizToAnswer) ||
+			gameState.lastQuizResult ? (
+				<div
+					className={
+						cameraView === 'panoramic'
+							? 'pointer-events-auto absolute top-16 left-1/2 z-30 w-full max-w-2xl -translate-x-1/2 space-y-2 px-4'
+							: 'space-y-3'
+					}
+				>
+					{isOnlineMultiplayer && onlineRoom?.status === 'waiting' && (
+						<FlatPanel variant="gold" wellVariant="gold-dark" wellClassName="px-6 py-3 text-center">
+							<div className="font-pixel text-xs text-amber-300">WAITING FOR CHALLENGER TO JOIN ROOM {roomCode}...</div>
+							<p className="mt-1 text-xs text-slate-200">
+								Share room code <strong className="font-mono text-white">{roomCode}</strong> with Player 2. As soon as
+								they join from the Lobby, the battle will unlock automatically!
+							</p>
+						</FlatPanel>
 					)}
-				</div>
 
-				{/* Mode Switcher & Match Utility Controls */}
-				<div className="flex flex-wrap items-center gap-2">
-					<div className="flex items-center gap-1">
-						<FlatButton
-							variant={cameraView === 'panoramic' ? 'blue' : 'dark'}
-							size="sm"
-							onClick={() => setCameraView('panoramic')}
-						>
-							Full Map (moon.png)
-						</FlatButton>
-						<FlatButton
-							variant={cameraView === 'split' ? 'blue' : 'dark'}
-							size="sm"
-							onClick={() => setCameraView('split')}
-						>
-							Split Camera
-						</FlatButton>
-					</div>
-
-					{!isOnlineMultiplayer ? (
-						<>
-							<div className="flex items-center gap-1">
-								<FlatButton
-									variant={playMode === 'vs-bot' ? 'gold' : 'dark'}
-									size="sm"
-									onClick={() => setPlayMode('vs-bot')}
-								>
-									1P vs Bot
-								</FlatButton>
-								<FlatButton
-									variant={playMode === 'hotseat-open' ? 'gold' : 'dark'}
-									size="sm"
-									onClick={() => setPlayMode('hotseat-open')}
-								>
-									2P Open
-								</FlatButton>
-								<FlatButton
-									variant={playMode === 'hotseat-curtain' ? 'gold' : 'dark'}
-									size="sm"
-									onClick={() => setPlayMode('hotseat-curtain')}
-								>
-									2P Curtain
-								</FlatButton>
+					{isOnlineMultiplayer && currentQuizEntry && !isMyQuizToAnswer && (
+						<FlatPanel variant="blue" wellVariant="blue-dark" wellClassName="px-6 py-3 text-center">
+							<div className="font-pixel text-xs text-sky-300">
+								OPPONENT IS ANSWERING YOUR STEM QUIZ FOR {currentQuizEntry.card.name.toUpperCase()} (#
+								{currentQuizEntry.card.id})...
 							</div>
+							<p className="mt-1 text-xs text-slate-200">
+								Queue remaining: {gameState.pendingThrow.length} card(s). Card resolves as soon as the defender answers
+								or their timer expires.
+							</p>
+						</FlatPanel>
+					)}
 
-							<FlatButton
-								variant="cream"
-								size="sm"
-								onClick={() => {
-									audioManager.playSfx('match-start')
-									setMatchSeed((s) => s + 1)
-								}}
-							>
-								New Deal
-							</FlatButton>
-						</>
-					) : (
-						<FlatWell variant="blue-dark" className="px-3 py-1 font-mono text-xs text-emerald-300">
-							{onlineRoom?.status === 'waiting'
-								? 'Waiting for Challenger (P2)...'
-								: opponentSilenceSeconds >= 15
-									? `Opponent silent: ${opponentSilenceSeconds}s / ${ENGINE_CONFIG.disconnectForfeitSeconds}s forfeit`
-									: 'Firestore Live Sync Active'}
+					{gameState.lastQuizResult && (
+						<FlatWell
+							variant={
+								gameState.lastQuizResult.resolution === 'nullified'
+									? 'blue-dark'
+									: gameState.lastQuizResult.resolution === 'reduced'
+										? 'gold-dark'
+										: 'dark'
+							}
+							className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-xs shadow-lg"
+						>
+							<div className="flex flex-wrap items-center gap-2 font-pixel text-[10px]">
+								<FlatIcon name="point" />
+								<span>LAST RESOLVED CARD:</span>
+								<span className="text-amber-300">
+									{gameState.lastQuizResult.cardName} (#{gameState.lastQuizResult.cardId})
+								</span>
+								<span aria-hidden="true">·</span>
+								<span>
+									Defender Answer: <strong>{gameState.lastQuizResult.answer.toUpperCase()}</strong>
+								</span>
+								<span aria-hidden="true">→</span>
+								<span className="underline">
+									{gameState.lastQuizResult.resolution === 'nullified'
+										? 'NULLIFIED (0% EFFECT)'
+										: gameState.lastQuizResult.resolution === 'reduced'
+											? 'REDUCED TO 35% STRENGTH'
+											: 'FULL EFFECT (100%)'}
+								</span>
+							</div>
+							<span className="font-mono text-[11px] text-slate-300">
+								Pending Queue: {gameState.pendingThrow.length} card(s)
+							</span>
 						</FlatWell>
 					)}
+				</div>
+			) : null}
 
+			{/* Arena Duel Viewport: Full-Screen moon.png Battle Map Stage + Top-Left / Top-Right HUD Panels */}
+			<div className={cameraView === 'panoramic' ? 'relative h-full w-full' : 'relative space-y-4'}>
+				{/* Single Pause Button anchored in the middle-top of the map */}
+				<div className="absolute top-6 left-1/2 z-40 -translate-x-1/2 sm:top-7">
 					<FlatButton
-						variant="orange"
+						variant="cream"
 						size="sm"
-						icon="cross"
-						onClick={() => handleForfeit(isOnlineMultiplayer ? myPlayerIndex : activeIdx)}
-						disabled={gameState.status === 'finished'}
+						className="items-center justify-center px-4 text-center"
+						onClick={() => {
+							audioManager.playSfx('popup-open')
+							setIsPauseMenuOpen(true)
+						}}
 					>
-						Forfeit P{(isOnlineMultiplayer ? myPlayerIndex : activeIdx) + 1}
+						Pause
 					</FlatButton>
 				</div>
-			</FlatPanel>
 
-			{/* Online Waiting for Challenger Banner */}
-			{isOnlineMultiplayer && onlineRoom?.status === 'waiting' && (
-				<FlatPanel variant="gold" wellVariant="gold-dark" wellClassName="px-6 py-4 text-center">
-					<div className="font-pixel text-xs text-amber-300">WAITING FOR CHALLENGER TO JOIN ROOM {roomCode}...</div>
-					<p className="mt-1 text-xs text-slate-200">
-						Share room code <strong className="font-mono text-white">{roomCode}</strong> with Player 2. As soon as they
-						join from the Lobby, the battle will unlock automatically!
-					</p>
-				</FlatPanel>
-			)}
-
-			{/* Online Attacker Waiting for Defender Quiz Banner */}
-			{isOnlineMultiplayer && currentQuizEntry && !isMyQuizToAnswer && (
-				<FlatPanel variant="blue" wellVariant="blue-dark" wellClassName="px-6 py-4 text-center">
-					<div className="font-pixel text-xs text-sky-300">
-						OPPONENT IS ANSWERING YOUR STEM QUIZ FOR {currentQuizEntry.card.name.toUpperCase()} (#
-						{currentQuizEntry.card.id})...
-					</div>
-					<p className="mt-1 text-xs text-slate-200">
-						Queue remaining: {gameState.pendingThrow.length} card(s). Card resolves as soon as the defender answers or
-						their timer expires.
-					</p>
-				</FlatPanel>
-			)}
-
-			{/* Last Quiz Resolution Banner / Combat Feed */}
-			{gameState.lastQuizResult && (
-				<FlatWell
-					variant={
-						gameState.lastQuizResult.resolution === 'nullified'
-							? 'blue-dark'
-							: gameState.lastQuizResult.resolution === 'reduced'
-								? 'gold-dark'
-								: 'dark'
-					}
-					className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-xs"
-				>
-					<div className="flex flex-wrap items-center gap-2 font-pixel text-[10px]">
-						<FlatIcon name="point" />
-						<span>LAST RESOLVED CARD:</span>
-						<span className="text-amber-300">
-							{gameState.lastQuizResult.cardName} (#{gameState.lastQuizResult.cardId})
-						</span>
-						<span aria-hidden="true">·</span>
-						<span>
-							Defender Answer: <strong>{gameState.lastQuizResult.answer.toUpperCase()}</strong>
-						</span>
-						<span aria-hidden="true">→</span>
-						<span className="underline">
-							{gameState.lastQuizResult.resolution === 'nullified'
-								? 'NULLIFIED (0% EFFECT)'
-								: gameState.lastQuizResult.resolution === 'reduced'
-									? 'REDUCED TO 35% STRENGTH'
-									: 'FULL EFFECT (100%)'}
-						</span>
-					</div>
-					<span className="font-mono text-[11px] text-slate-300">
-						Pending Queue: {gameState.pendingThrow.length} card(s)
-					</span>
-				</FlatWell>
-			)}
-
-			{/* Finished Match Banner */}
-			{gameState.status === 'finished' && (
-				<FlatPanel
-					variant="gold"
-					wellVariant="gold-dark"
-					wellClassName="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
-				>
-					<div>
-						<div className="font-pixel text-sm text-amber-300">
-							{gameState.winner !== null
-								? `VICTORY! PLAYER ${gameState.winner + 1} (${gameState.players[gameState.winner].name.toUpperCase()}) WINS THE DUEL!`
-								: 'DRAW! MATCH REACHED THE 500-ACTION CAP!'}
-						</div>
-						<p className="mt-1 text-xs text-slate-200">
-							Completed in {gameState.round} round(s) ({gameState.turn} turns).
-							{gameState.forfeitedBy !== null ? ` Player ${gameState.forfeitedBy + 1} forfeited.` : ''}
-						</p>
-					</div>
-					<div className="flex items-center gap-3">
-						<FlatButton variant="silver" size="md" icon="play" onClick={handleRematchClick}>
-							Instant Rematch
-						</FlatButton>
-						<FlatButton variant="cream" size="md" icon="arrow" onClick={handleProceedToResult}>
-							View Match Summary
-						</FlatButton>
-					</div>
-				</FlatPanel>
-			)}
-
-			{/* Arena Duel Viewport: Default moon.png Battle Map Stage + Symmetric Player 1 & Player 2 HUD Panels */}
-			<div className="space-y-4">
 				{cameraView === 'panoramic' && (
-					<BattleArenaStage
-						mapId={DEFAULT_BATTLE_MAP_ID}
-						p1Character={effectiveP1Char}
-						p2Character={effectiveP2Char}
-						p1Name={p1State.name}
-						p2Name={p2State.name}
-						p1Animation={
-							p1State.currentHealth <= 0 || (gameState.status === 'finished' && gameState.winner === 1)
-								? 'death'
-								: p1Anim
-						}
-						p2Animation={
-							p2State.currentHealth <= 0 || (gameState.status === 'finished' && gameState.winner === 0)
-								? 'death'
-								: p2Anim
-						}
-						p1Hp={p1State.currentHealth}
-						p1MaxHp={p1State.maxHealth}
-						p1Block={p1State.block}
-						p2Hp={p2State.currentHealth}
-						p2MaxHp={p2State.maxHealth}
-						p2Block={p2State.block}
-						activePlayerIndex={activeIdx}
-						isPlaying={gameState.status === 'playing'}
-						onP1AnimationComplete={() => {
-							if (p1Anim === 'turnStart') {
-								setP1Anim('idle')
-							} else if (p1Anim === 'turnEnd') {
-								setP1Anim('idle2')
-							} else if (p1Anim === 'attack' || p1Anim === 'hurt') {
-								setP1Anim(getRestingIdleState(effectiveP1Char, activeIdx === 0))
+					<div className="relative h-full w-full">
+						<BattleArenaStage
+							fullScreen
+							mapId={DEFAULT_BATTLE_MAP_ID}
+							p1Character={effectiveP1Char}
+							p2Character={effectiveP2Char}
+							p1Name={p1State.name}
+							p2Name={p2State.name}
+							p1Animation={
+								p1State.currentHealth <= 0 || (gameState.status === 'finished' && gameState.winner === 1)
+									? 'death'
+									: p1Anim
 							}
-						}}
-						onP2AnimationComplete={() => {
-							if (p2Anim === 'turnStart') {
-								setP2Anim('idle')
-							} else if (p2Anim === 'turnEnd') {
-								setP2Anim('idle2')
-							} else if (p2Anim === 'attack' || p2Anim === 'hurt') {
-								setP2Anim(getRestingIdleState(effectiveP2Char, activeIdx === 1))
+							p2Animation={
+								p2State.currentHealth <= 0 || (gameState.status === 'finished' && gameState.winner === 0)
+									? 'death'
+									: p2Anim
 							}
-						}}
-					/>
-				)}
+							activePlayerIndex={activeIdx}
+							isPlaying={gameState.status === 'playing'}
+							onP1AnimationComplete={() => {
+								if (p1Anim === 'turnStart') {
+									setP1Anim('idle')
+								} else if (p1Anim === 'turnEnd') {
+									setP1Anim('idle2')
+								} else if (p1Anim === 'attack' || p1Anim === 'hurt') {
+									setP1Anim(getRestingIdleState(effectiveP1Char, activeIdx === 0))
+								}
+							}}
+							onP2AnimationComplete={() => {
+								if (p2Anim === 'turnStart') {
+									setP2Anim('idle')
+								} else if (p2Anim === 'turnEnd') {
+									setP2Anim('idle2')
+								} else if (p2Anim === 'attack' || p2Anim === 'hurt') {
+									setP2Anim(getRestingIdleState(effectiveP2Char, activeIdx === 1))
+								}
+							}}
+						/>
 
-				<div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
-					{/* Player 1 Panel */}
-					<FlatPanel
-						variant={activeIdx === 0 ? 'gold' : 'silver'}
-						wellVariant={activeIdx === 0 ? 'gold-dark' : 'dark'}
-						wellClassName="flex flex-col justify-between p-4"
-					>
-						<div className="space-y-3">
-							<div className="flex flex-wrap items-center justify-between gap-2">
+						{/* Top-Left Corner (Inset): Player 1 Health, Mana, & Status Effects */}
+						<div className="pointer-events-auto absolute top-6 left-6 z-30 flex w-56 flex-col gap-1.5 sm:top-7 sm:left-8 sm:w-64">
+							<FlatWell variant="dark" className="w-full overflow-hidden space-y-1.5 px-3 py-2 shadow-lg">
 								<div className="flex items-center gap-2">
-									<span className="flat-slot-gold px-2 py-0.5 font-pixel text-[10px] text-[#141824]">
-										P1{isOnlineMultiplayer && onlineSeat === 1 ? '·YOU' : ''}
-									</span>
-									<span className="font-pixel text-sm text-amber-300">{p1State.name}</span>
-									{activeIdx === 0 && gameState.status === 'playing' && (
-										<FlatBanner variant="offset-bl" className="px-2 py-0.5 text-[9px]">
-											ACTIVE TURN
-										</FlatBanner>
-									)}
+									<div className="flex-1">
+										<FlatBar
+											value={p1State.currentHealth}
+											max={p1State.maxHealth}
+											shieldValue={p1State.block}
+											fillTone={p1State.currentHealth <= 20 ? 'red' : 'green'}
+											heightClass="h-4"
+										/>
+									</div>
 								</div>
-
-								<div className="flex items-center gap-3 font-pixel text-xs tabular-nums">
-									{p1State.block > 0 && (
-										<span className="flat-slot-blue px-2 py-0.5 text-[10px] text-white">BLOCK {p1State.block}</span>
-									)}
-									<span className={p1State.currentHealth <= 20 ? 'text-red-400' : 'text-emerald-300'}>
-										{p1State.currentHealth}/{p1State.maxHealth} HP
-									</span>
-								</div>
-							</div>
-
-							{/* FlatUI Pixel HP Bar */}
-							<FlatBar
-								value={p1State.currentHealth}
-								max={p1State.maxHealth}
-								fillTone={p1State.currentHealth <= 20 ? 'red' : 'green'}
-								heightClass="h-5"
-							/>
-
-							{/* Persistent Mana Bar & Affinity Info */}
-							<div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-								<div className="flex items-center gap-2">
-									<span className="font-pixel text-[10px] text-slate-200">MANA:</span>
+								<div className="flex items-center justify-between gap-1.5">
+									<span className="shrink-0 font-pixel text-[9px] text-amber-300">MANA</span>
 									<FlatManaPips
 										currentMana={p1State.mana}
 										maxMana={p1State.maxMana}
 										reservedMana={myPlayerIndex === 0 ? selectedManaCost : 0}
 									/>
-									<span className="font-mono text-xs text-slate-200 tabular-nums">
+									<span className="shrink-0 font-mono text-[11px] font-bold text-slate-100 tabular-nums">
 										{p1State.mana}/{p1State.maxMana}
 									</span>
 								</div>
-
-								<div className="text-[11px] text-slate-300">
-									Aff:{' '}
-									<strong style={{color: SUBJECT_BORDER_PALETTE[p1Meta.affinity].highlight}}>
-										{SUBJECT_BORDER_PALETTE[p1Meta.affinity].shortCode}
-									</strong>{' '}
-									· Weak:{' '}
-									<strong style={{color: SUBJECT_BORDER_PALETTE[p1Meta.weakness].highlight}}>
-										{SUBJECT_BORDER_PALETTE[p1Meta.weakness].shortCode}
-									</strong>
-								</div>
-							</div>
-
+							</FlatWell>
 							<StatusBadges powers={p1State.powers} phoenixUsed={p1State.phoenixUsed} />
 						</div>
 
-						{cameraView === 'split' && (
+						{/* Top-Right Corner (Inset): Player 2 Health, Mana, & Status Effects */}
+						<div className="pointer-events-auto absolute top-6 right-6 z-30 flex w-56 flex-col items-end gap-1.5 sm:top-7 sm:right-8 sm:w-64">
+							<FlatWell variant="dark" className="w-full overflow-hidden space-y-1.5 px-3 py-2 shadow-lg">
+								<div className="flex items-center gap-2">
+									<div className="flex-1">
+										<FlatBar
+											value={p2State.currentHealth}
+											max={p2State.maxHealth}
+											shieldValue={p2State.block}
+											fillTone={p2State.currentHealth <= 20 ? 'red' : 'green'}
+											heightClass="h-4"
+										/>
+									</div>
+								</div>
+								<div className="flex items-center justify-between gap-1.5">
+									<span className="shrink-0 font-pixel text-[9px] text-sky-300">MANA</span>
+									<FlatManaPips
+										currentMana={p2State.mana}
+										maxMana={p2State.maxMana}
+										reservedMana={myPlayerIndex === 1 ? selectedManaCost : 0}
+									/>
+									<span className="shrink-0 font-mono text-[11px] font-bold text-slate-100 tabular-nums">
+										{p2State.mana}/{p2State.maxMana}
+									</span>
+								</div>
+							</FlatWell>
+							<StatusBadges powers={p2State.powers} phoenixUsed={p2State.phoenixUsed} align="right" />
+						</div>
+
+						{/* Bottom-Left Corner (Inset): Player's Own Draw, Discard, & Exhaust Buttons */}
+						{!showPassCurtain && (
+							<div className="pointer-events-auto absolute bottom-6 left-6 z-40 flex flex-wrap items-center gap-1.5 sm:bottom-7 sm:left-8">
+								<FlatButton
+									variant="dark"
+									size="sm"
+									onClick={() => {
+										audioManager.playSfx('popup-open')
+										setPileModal({playerIndex: myPlayerIndex, pile: 'draw'})
+									}}
+								>
+									Draw ({displayedHandPlayer.drawPile.length})
+								</FlatButton>
+								<FlatButton
+									variant="dark"
+									size="sm"
+									onClick={() => {
+										audioManager.playSfx('popup-open')
+										setPileModal({playerIndex: myPlayerIndex, pile: 'discard'})
+									}}
+								>
+									Discard ({displayedHandPlayer.discardPile.length})
+								</FlatButton>
+								<FlatButton
+									variant="dark"
+									size="sm"
+									onClick={() => {
+										audioManager.playSfx('popup-open')
+										setPileModal({playerIndex: myPlayerIndex, pile: 'exhaust'})
+									}}
+								>
+									Exhaust ({displayedHandPlayer.exhaustPile.length})
+								</FlatButton>
+							</div>
+						)}
+
+						{/* Floating Fanned Hand at the Middle-Bottom of the Map */}
+						<div className="pointer-events-none absolute inset-x-0 bottom-5 z-30 flex flex-col items-center px-4 sm:bottom-6">
+							{showPassCurtain ? (
+								<div className="flat-frame-gold pointer-events-auto flex flex-col items-center justify-center bg-slate-950/95 px-6 py-4 text-center shadow-2xl">
+									<FlatBanner variant="offset-bl">
+										PASS DEVICE TO PLAYER {activeIdx + 1} ({activePlayer.name.toUpperCase()})
+									</FlatBanner>
+									<FlatButton
+										variant="cream"
+										size="sm"
+										icon="play"
+										onClick={() => setCurtainDismissedForTurn(gameState.turn)}
+										className="mt-3"
+									>
+										Reveal P{activeIdx + 1} Hand
+									</FlatButton>
+								</div>
+							) : (
+								<>
+									{statusMessage && (
+										<FlatWell
+											variant="gold-dark"
+											className="pointer-events-auto mb-2 px-3 py-1 font-mono text-[11px] text-amber-200 shadow-lg"
+										>
+											{statusMessage}
+										</FlatWell>
+									)}
+
+									{/* Slay the Spire / Slay the Web Fanned Floating Hand */}
+									{displayedHandPlayer.hand.length > 0 && (
+										<div className="pointer-events-auto flex items-end justify-center pb-1">
+											{displayedHandPlayer.hand.map((card, idx) => {
+												const selIdx = selectedInstanceIds.indexOf(card.instanceId)
+												const isSelected = selIdx !== -1
+												const remainingMana = displayedHandPlayer.mana - selectedManaCost
+												const playableAlone = canPlay(gameState, card, myPlayerIndex)
+												const canAddToSelection =
+													isSelected || (isMyTurnToAct && playableAlone && card.cost <= remainingMana)
+												const liveText = formatLiveCardText(card, gameState, myPlayerIndex)
+												const totalCards = displayedHandPlayer.hand.length
+												const mid = (totalCards - 1) / 2
+												const offset = idx - mid
+												const rotateDeg = isSelected ? 0 : offset * 4.5
+												const arcDropPx = isSelected ? -12 : Math.round(Math.abs(offset) * Math.abs(offset) * 3)
+
+												return (
+													<div
+														key={card.instanceId}
+														style={{
+															marginLeft: idx === 0 ? '0px' : '-16px',
+															transform: `translateY(${arcDropPx}px) rotate(${rotateDeg}deg)`,
+															transformOrigin: 'bottom center',
+														}}
+														className={`relative transition-all duration-150 hover:z-40 hover:!-translate-y-4 hover:!rotate-0 ${
+															isSelected ? 'z-30' : 'z-10'
+														}`}
+													>
+														<NineSliceCard
+															id={card.id}
+															name={card.name}
+															subject={card.subject}
+															rarity={card.rarity}
+															cost={card.cost}
+															text={liveText}
+															upgraded={card.upgraded}
+															exhaust={card.exhaust}
+															power={card.power}
+															integerScale={2}
+															scaleMultiplier={0.9}
+															selected={isSelected}
+															selectionOrder={isSelected ? selIdx + 1 : undefined}
+															disabled={!canAddToSelection && !isSelected}
+															onClick={() => handleToggleCard(card)}
+														/>
+													</div>
+												)
+											})}
+										</div>
+									)}
+								</>
+							)}
+						</div>
+
+						{/* Bottom-Right Corner (Inset): Turn Action Controls (Throw, Skip / End Turn) */}
+						{!showPassCurtain && (
+							<div className="pointer-events-auto absolute right-6 bottom-6 z-40 flex flex-wrap items-center justify-end gap-2 sm:right-8 sm:bottom-7">
+								{selectedInstanceIds.length > 0 && (
+									<FlatButton
+										variant="cream"
+										size="sm"
+										icon="play"
+										onClick={handleThrowSelected}
+										disabled={!isMyTurnToAct}
+									>
+										Throw ({selectedInstanceIds.length} · {selectedManaCost}M)
+									</FlatButton>
+								)}
+
+								{!hasThrownThisTurn && gameState.throwsThisTurn === 0 ? (
+									<FlatButton
+										variant="blue"
+										size="sm"
+										icon="plus"
+										onClick={handleSkipTurn}
+										disabled={!isMyTurnToAct}
+										title="Throw nothing this turn to gain +1 bonus Mana (up to 5) and end turn"
+									>
+										Skip Turn (+1 Mana)
+									</FlatButton>
+								) : (
+									<FlatButton variant="gold" size="sm" icon="arrow" onClick={handleEndTurn} disabled={!isMyTurnToAct}>
+										End Turn
+									</FlatButton>
+								)}
+							</div>
+						)}
+					</div>
+				)}
+
+				{cameraView === 'split' && (
+					<div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
+						{/* Player 1 Split Stage */}
+						<FlatPanel
+							variant={activeIdx === 0 ? 'gold' : 'silver'}
+							wellVariant={activeIdx === 0 ? 'gold-dark' : 'dark'}
+							wellClassName="flex flex-col items-center justify-between p-4 space-y-2"
+						>
+							<div className="flex w-full items-start justify-between gap-2">
+								<div className="w-52 space-y-1">
+									<div className="flex items-center gap-1.5">
+										<div className="flex-1">
+											<FlatBar
+												value={p1State.currentHealth}
+												max={p1State.maxHealth}
+												shieldValue={p1State.block}
+												fillTone={p1State.currentHealth <= 20 ? 'red' : 'green'}
+												heightClass="h-3.5"
+											/>
+										</div>
+									</div>
+									<div className="flex items-center justify-between gap-1.5">
+										<span className="shrink-0 font-pixel text-[8px] text-amber-300">MANA</span>
+										<FlatManaPips
+											currentMana={p1State.mana}
+											maxMana={p1State.maxMana}
+											reservedMana={myPlayerIndex === 0 ? selectedManaCost : 0}
+										/>
+										<span className="shrink-0 font-mono text-[10px] font-bold text-slate-100 tabular-nums">
+											{p1State.mana}/{p1State.maxMana}
+										</span>
+									</div>
+									<StatusBadges powers={p1State.powers} phoenixUsed={p1State.phoenixUsed} />
+								</div>
+
+								<div className="flex flex-col items-end gap-1">
+									{activeIdx === 0 && gameState.status === 'playing' && (
+										<FlatBanner variant="offset-bl" className="px-2 py-0.5 text-[9px]">
+											ACTIVE TURN
+										</FlatBanner>
+									)}
+									<span className="font-pixel text-sm text-amber-300">{p1State.name}</span>
+								</div>
+							</div>
+
 							<PlayerMapCropStage
 								seat={1}
 								mapId={DEFAULT_BATTLE_MAP_ID}
@@ -866,117 +979,51 @@ export function BattleScreen({
 									}
 								}}
 							/>
-						)}
+						</FlatPanel>
 
-						{/* Pile Counters */}
-						<div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/80 pt-3 font-mono text-xs text-slate-300">
-							<span>Hand: {p1State.hand.length}</span>
-							<div className="flex items-center gap-1.5">
-								{(!isOnlineMultiplayer || onlineSeat === 1) && (
-									<FlatButton
-										variant="dark"
-										size="sm"
-										onClick={() => {
-											audioManager.playSfx('popup-open')
-											setPileModal({playerIndex: 0, pile: 'draw'})
-										}}
-									>
-										Draw ({p1State.drawPile.length})
-									</FlatButton>
-								)}
-								<FlatButton
-									variant="dark"
-									size="sm"
-									onClick={() => {
-										audioManager.playSfx('popup-open')
-										setPileModal({playerIndex: 0, pile: 'discard'})
-									}}
-								>
-									Discard ({p1State.discardPile.length})
-								</FlatButton>
-								<FlatButton
-									variant="dark"
-									size="sm"
-									onClick={() => {
-										audioManager.playSfx('popup-open')
-										setPileModal({playerIndex: 0, pile: 'exhaust'})
-									}}
-								>
-									Exhaust ({p1State.exhaustPile.length})
-								</FlatButton>
-							</div>
-						</div>
-					</FlatPanel>
-
-					{/* Player 2 Panel */}
-					<FlatPanel
-						variant={activeIdx === 1 ? 'blue' : 'silver'}
-						wellVariant={activeIdx === 1 ? 'blue-dark' : 'dark'}
-						wellClassName="flex flex-col justify-between p-4"
-					>
-						<div className="space-y-3">
-							<div className="flex flex-wrap items-center justify-between gap-2">
-								<div className="flex items-center gap-2">
-									<span className="flat-slot-blue px-2 py-0.5 font-pixel text-[10px] text-white">
-										P2
-										{isOnlineMultiplayer ? (onlineSeat === 2 ? '·YOU' : '') : playMode === 'vs-bot' ? '·BOT' : ''}
-									</span>
-									<span className="font-pixel text-sm text-sky-300">{p2State.name}</span>
+						{/* Player 2 Split Stage */}
+						<FlatPanel
+							variant={activeIdx === 1 ? 'blue' : 'silver'}
+							wellVariant={activeIdx === 1 ? 'blue-dark' : 'dark'}
+							wellClassName="flex flex-col items-center justify-between p-4 space-y-2"
+						>
+							<div className="flex w-full items-start justify-between gap-2">
+								<div className="flex flex-col items-start gap-1">
 									{activeIdx === 1 && gameState.status === 'playing' && (
 										<FlatBanner variant="offset-bl" className="px-2 py-0.5 text-[9px]">
 											ACTIVE TURN
 										</FlatBanner>
 									)}
+									<span className="font-pixel text-sm text-sky-300">{p2State.name}</span>
 								</div>
 
-								<div className="flex items-center gap-3 font-pixel text-xs tabular-nums">
-									{p2State.block > 0 && (
-										<span className="flat-slot-blue px-2 py-0.5 text-[10px] text-white">BLOCK {p2State.block}</span>
-									)}
-									<span className={p2State.currentHealth <= 20 ? 'text-red-400' : 'text-emerald-300'}>
-										{p2State.currentHealth}/{p2State.maxHealth} HP
-									</span>
-								</div>
-							</div>
-
-							{/* FlatUI Pixel HP Bar */}
-							<FlatBar
-								value={p2State.currentHealth}
-								max={p2State.maxHealth}
-								fillTone={p2State.currentHealth <= 20 ? 'red' : 'green'}
-								heightClass="h-5"
-							/>
-
-							{/* Persistent Mana Bar & Affinity Info */}
-							<div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-								<div className="flex items-center gap-2">
-									<span className="font-pixel text-[10px] text-slate-200">MANA:</span>
-									<FlatManaPips
-										currentMana={p2State.mana}
-										maxMana={p2State.maxMana}
-										reservedMana={myPlayerIndex === 1 ? selectedManaCost : 0}
-									/>
-									<span className="font-mono text-xs text-slate-200 tabular-nums">
-										{p2State.mana}/{p2State.maxMana}
-									</span>
-								</div>
-
-								<div className="text-[11px] text-slate-300">
-									Aff:{' '}
-									<strong style={{color: SUBJECT_BORDER_PALETTE[p2Meta.affinity].highlight}}>
-										{SUBJECT_BORDER_PALETTE[p2Meta.affinity].shortCode}
-									</strong>{' '}
-									· Weak:{' '}
-									<strong style={{color: SUBJECT_BORDER_PALETTE[p2Meta.weakness].highlight}}>
-										{SUBJECT_BORDER_PALETTE[p2Meta.weakness].shortCode}
-									</strong>
+								<div className="w-52 space-y-1">
+									<div className="flex items-center gap-1.5">
+										<div className="flex-1">
+											<FlatBar
+												value={p2State.currentHealth}
+												max={p2State.maxHealth}
+												shieldValue={p2State.block}
+												fillTone={p2State.currentHealth <= 20 ? 'red' : 'green'}
+												heightClass="h-3.5"
+											/>
+										</div>
+									</div>
+									<div className="flex items-center justify-between gap-1.5">
+										<span className="shrink-0 font-pixel text-[8px] text-sky-300">MANA</span>
+										<FlatManaPips
+											currentMana={p2State.mana}
+											maxMana={p2State.maxMana}
+											reservedMana={myPlayerIndex === 1 ? selectedManaCost : 0}
+										/>
+										<span className="shrink-0 font-mono text-[10px] font-bold text-slate-100 tabular-nums">
+											{p2State.mana}/{p2State.maxMana}
+										</span>
+									</div>
+									<StatusBadges powers={p2State.powers} phoenixUsed={p2State.phoenixUsed} align="right" />
 								</div>
 							</div>
 
-							<StatusBadges powers={p2State.powers} phoenixUsed={p2State.phoenixUsed} />
-						</div>
-
-						{cameraView === 'split' && (
 							<PlayerMapCropStage
 								seat={2}
 								mapId={DEFAULT_BATTLE_MAP_ID}
@@ -997,177 +1044,49 @@ export function BattleScreen({
 									}
 								}}
 							/>
-						)}
-
-						{/* Pile Counters */}
-						<div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/80 pt-3 font-mono text-xs text-slate-300">
-							<span>Hand: {p2State.hand.length}</span>
-							<div className="flex items-center gap-1.5">
-								{(!isOnlineMultiplayer || onlineSeat === 2) && (
-									<FlatButton
-										variant="dark"
-										size="sm"
-										onClick={() => {
-											audioManager.playSfx('popup-open')
-											setPileModal({playerIndex: 1, pile: 'draw'})
-										}}
-									>
-										Draw ({p2State.drawPile.length})
-									</FlatButton>
-								)}
-								<FlatButton
-									variant="dark"
-									size="sm"
-									onClick={() => {
-										audioManager.playSfx('popup-open')
-										setPileModal({playerIndex: 1, pile: 'discard'})
-									}}
-								>
-									Discard ({p2State.discardPile.length})
-								</FlatButton>
-								<FlatButton
-									variant="dark"
-									size="sm"
-									onClick={() => {
-										audioManager.playSfx('popup-open')
-										setPileModal({playerIndex: 1, pile: 'exhaust'})
-									}}
-								>
-									Exhaust ({p2State.exhaustPile.length})
-								</FlatButton>
-							</div>
-						</div>
-					</FlatPanel>
-				</div>
+						</FlatPanel>
+					</div>
+				)}
 			</div>
 
-			{/* Player Hand & Throw Control Deck */}
-			<FlatPanel variant="silver" wellVariant="dark" className="relative" wellClassName="space-y-4 p-5">
-				{/* Optional Pass-and-Play Curtain */}
-				{showPassCurtain && (
-					<div className="flat-frame-gold absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center">
-						<FlatBanner variant="offset-bl">
-							PASS DEVICE TO PLAYER {activeIdx + 1} ({activePlayer.name.toUpperCase()})
-						</FlatBanner>
-						<p className="mt-3 max-w-md text-xs text-slate-200">
-							Hand cards are hidden during turn transitions in 2P Curtain mode so your opponent cannot see your hand or
-							bound questions.
-						</p>
-						<FlatButton
-							variant="cream"
-							size="lg"
-							icon="play"
-							onClick={() => setCurtainDismissedForTurn(gameState.turn)}
-							className="mt-4"
+			{/* Split Camera Fallback Floating Hand */}
+			{cameraView === 'split' && (
+				<div className="relative flex flex-col items-center pt-4 pb-2">
+					{statusMessage && (
+						<FlatWell
+							variant="gold-dark"
+							className="mb-2 px-3 py-1 font-mono text-[11px] text-amber-200 shadow-lg"
 						>
-							Reveal P{activeIdx + 1} Hand
-						</FlatButton>
-					</div>
-				)}
+							{statusMessage}
+						</FlatWell>
+					)}
 
-				{/* Hand Header & Action Controls */}
-				<div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
-					<div>
-						<div className="flex flex-wrap items-center gap-2.5 font-pixel text-xs">
-							<FlatBanner variant="offset-bl" className="px-2 py-0.5 text-[10px]">
-								P{myPlayerIndex + 1} ({displayedHandPlayer.name}) HAND ({displayedHandPlayer.hand.length}/
-								{ENGINE_CONFIG.maxHandSize})
-							</FlatBanner>
-							<span className="font-mono text-xs text-slate-200">
-								Selected: {selectedInstanceIds.length} card(s) ({selectedManaCost}/{displayedHandPlayer.mana} Mana)
-							</span>
-						</div>
-						<p className="mt-1.5 text-xs text-slate-300">
-							{isMyTurnToAct
-								? 'Click affordable cards in the order you want to throw them. Numbers marked with * show live matchup damage / block / heal.'
-								: isOnlineMultiplayer
-									? `Waiting for Player ${activeIdx + 1} (${activePlayer.name}) to complete their turn...`
-									: 'Bot is executing turn...'}
-						</p>
-					</div>
-
-					{/* Primary Turn Actions */}
-					<div className="flex flex-wrap items-center gap-2.5">
-						{selectedInstanceIds.length > 0 && (
-							<FlatButton
-								variant="silver"
-								size="md"
-								icon="cross"
-								onClick={() => {
-									audioManager.playSfx('cancel')
-									setSelectedInstanceIds([])
-								}}
-							>
-								Clear ({selectedInstanceIds.length})
-							</FlatButton>
-						)}
-
-						<FlatButton
-							variant="cream"
-							size="md"
-							icon="play"
-							onClick={handleThrowSelected}
-							disabled={selectedInstanceIds.length === 0 || !isMyTurnToAct}
-						>
-							Throw Selected ({selectedInstanceIds.length} · {selectedManaCost}M)
-						</FlatButton>
-
-						<FlatButton
-							variant="blue"
-							size="md"
-							icon="plus"
-							onClick={handleSkipTurn}
-							disabled={hasThrownThisTurn || gameState.throwsThisTurn > 0 || !isMyTurnToAct}
-							title="Throw nothing this turn to gain +1 bonus Mana (up to 5) and end turn"
-						>
-							Skip Turn (+1 Mana)
-						</FlatButton>
-
-						<FlatButton variant="gold" size="md" icon="arrow" onClick={handleEndTurn} disabled={!isMyTurnToAct}>
-							End Turn
-						</FlatButton>
-					</div>
-				</div>
-
-				{/* Validation / Status Feedback */}
-				{statusMessage && (
-					<FlatWell variant="gold-dark" className="px-3 py-2 font-mono text-xs text-amber-200">
-						{statusMessage}
-					</FlatWell>
-				)}
-
-				{!hasAnyPlayableCard && !hasThrownThisTurn && isMyTurnToAct && (
-					<FlatWell variant="blue-dark" className="px-3 py-2 font-mono text-xs text-sky-200">
-						No card in hand is currently affordable with {displayedHandPlayer.mana} Mana. Click &ldquo;Skip Turn (+1
-						Mana)&rdquo; to bank +1 bonus Mana!
-					</FlatWell>
-				)}
-
-				{/* Hand Cards Row */}
-				{displayedHandPlayer.hand.length === 0 ? (
-					<div className="py-12 text-center font-pixel text-xs text-slate-400">
-						No cards remaining in hand. Click &ldquo;End Turn&rdquo; to pass the turn.
-					</div>
-				) : (
-					<div className="flex flex-wrap items-center justify-center gap-5 pt-3 pb-2">
-						{displayedHandPlayer.hand.map((card) => {
+					<div className="flex items-end justify-center pb-2">
+						{displayedHandPlayer.hand.map((card, idx) => {
 							const selIdx = selectedInstanceIds.indexOf(card.instanceId)
 							const isSelected = selIdx !== -1
 							const remainingMana = displayedHandPlayer.mana - selectedManaCost
 							const playableAlone = canPlay(gameState, card, myPlayerIndex)
 							const canAddToSelection = isSelected || (isMyTurnToAct && playableAlone && card.cost <= remainingMana)
 							const liveText = formatLiveCardText(card, gameState, myPlayerIndex)
+							const totalCards = displayedHandPlayer.hand.length
+							const mid = (totalCards - 1) / 2
+							const offset = idx - mid
+							const rotateDeg = isSelected ? 0 : offset * 4.5
+							const arcDropPx = isSelected ? -12 : Math.round(Math.abs(offset) * Math.abs(offset) * 3)
 
 							return (
-								<div key={card.instanceId} className="relative">
-									{isSelected && (
-										<>
-											<div className="flat-select-reticle pointer-events-none absolute -inset-2 z-20" />
-											<div className="flat-slot-gold pointer-events-none absolute -top-3.5 left-1/2 z-30 -translate-x-1/2 px-2 py-0.5 font-pixel text-[9px] text-[#141824] shadow-md">
-												THROW #{selIdx + 1}
-											</div>
-										</>
-									)}
+								<div
+									key={card.instanceId}
+									style={{
+										marginLeft: idx === 0 ? '0px' : '-16px',
+										transform: `translateY(${arcDropPx}px) rotate(${rotateDeg}deg)`,
+										transformOrigin: 'bottom center',
+									}}
+									className={`relative transition-all duration-150 hover:z-40 hover:!-translate-y-4 hover:!rotate-0 ${
+										isSelected ? 'z-30' : 'z-10'
+									}`}
+								>
 									<NineSliceCard
 										id={card.id}
 										name={card.name}
@@ -1178,22 +1097,83 @@ export function BattleScreen({
 										upgraded={card.upgraded}
 										exhaust={card.exhaust}
 										power={card.power}
-										integerScale={3}
+										integerScale={2}
+										scaleMultiplier={0.9}
 										selected={isSelected}
 										selectionOrder={isSelected ? selIdx + 1 : undefined}
 										disabled={!canAddToSelection && !isSelected}
 										onClick={() => handleToggleCard(card)}
-										onPeek={() => {
-											audioManager.playSfx('popup-open')
-											setPeekCard(card)
-										}}
 									/>
 								</div>
 							)
 						})}
 					</div>
-				)}
-			</FlatPanel>
+
+					{/* Bottom-Left Pile Controls (Local / Active Player Only) */}
+					<div className="absolute bottom-2 left-2 z-40 flex flex-wrap items-center gap-1.5">
+						<FlatButton
+							variant="dark"
+							size="sm"
+							onClick={() => {
+								audioManager.playSfx('popup-open')
+								setPileModal({playerIndex: myPlayerIndex, pile: 'draw'})
+							}}
+						>
+							Draw ({displayedHandPlayer.drawPile.length})
+						</FlatButton>
+						<FlatButton
+							variant="dark"
+							size="sm"
+							onClick={() => {
+								audioManager.playSfx('popup-open')
+								setPileModal({playerIndex: myPlayerIndex, pile: 'discard'})
+							}}
+						>
+							Discard ({displayedHandPlayer.discardPile.length})
+						</FlatButton>
+						<FlatButton
+							variant="dark"
+							size="sm"
+							onClick={() => {
+								audioManager.playSfx('popup-open')
+								setPileModal({playerIndex: myPlayerIndex, pile: 'exhaust'})
+							}}
+						>
+							Exhaust ({displayedHandPlayer.exhaustPile.length})
+						</FlatButton>
+					</div>
+
+					<div className="absolute right-2 bottom-2 z-40 flex flex-wrap items-center justify-end gap-2">
+						{selectedInstanceIds.length > 0 && (
+							<FlatButton
+								variant="cream"
+								size="sm"
+								icon="play"
+								onClick={handleThrowSelected}
+								disabled={!isMyTurnToAct}
+							>
+								Throw ({selectedInstanceIds.length} · {selectedManaCost}M)
+							</FlatButton>
+						)}
+
+						{!hasThrownThisTurn && gameState.throwsThisTurn === 0 ? (
+							<FlatButton
+								variant="blue"
+								size="sm"
+								icon="plus"
+								onClick={handleSkipTurn}
+								disabled={!isMyTurnToAct}
+							>
+								Skip Turn (+1 Mana)
+							</FlatButton>
+						) : (
+							<FlatButton variant="gold" size="sm" icon="arrow" onClick={handleEndTurn} disabled={!isMyTurnToAct}>
+								End Turn
+							</FlatButton>
+						)}
+					</div>
+				</div>
+			)}
 
 			{/* Active Quiz Modal when status === 'quizzing' and it is this client's quiz to answer */}
 			{currentQuizEntry && isMyQuizToAnswer && (
@@ -1207,18 +1187,6 @@ export function BattleScreen({
 					seed={gameState.seed}
 					isBotDefender={!isOnlineMultiplayer && playMode === 'vs-bot' && currentQuizEntry.defenderIndex === 1}
 					onResolve={handleResolveQuiz}
-				/>
-			)}
-
-			{/* Bound Question Peek Modal */}
-			{peekCard && (
-				<QuestionPeekModal
-					card={peekCard}
-					seed={gameState.seed}
-					onClose={() => {
-						audioManager.playSfx('popup-close')
-						setPeekCard(null)
-					}}
 				/>
 			)}
 
@@ -1283,6 +1251,133 @@ export function BattleScreen({
 							)
 						})()}
 					</FlatPanel>
+				</div>
+			)}
+
+			{/* Finished Match / Forfeit Pop-Up Modal */}
+			{gameState.status === 'finished' && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+					<FlatPanel
+						variant="gold"
+						wellVariant="gold-dark"
+						className="w-full max-w-[540px]"
+						wellClassName="p-6 space-y-5 text-center"
+					>
+						<div className="flex justify-center">
+							<FlatBanner variant="offset-bl">
+								{gameState.forfeitedBy !== null ? 'MATCH FORFEITED' : 'MATCH COMPLETE'}
+							</FlatBanner>
+						</div>
+
+						<div className="space-y-2">
+							<div className="font-pixel text-sm text-amber-300">
+								{gameState.winner !== null
+									? `VICTORY! PLAYER ${gameState.winner + 1} (${gameState.players[gameState.winner].name.toUpperCase()}) WINS THE DUEL!`
+									: 'DRAW! MATCH REACHED THE 500-ACTION CAP!'}
+							</div>
+							<p className="text-xs text-slate-200">
+								Completed in {gameState.round} round(s) ({gameState.turn} turns).
+								{gameState.forfeitedBy !== null ? ` Player ${gameState.forfeitedBy + 1} forfeited.` : ''}
+							</p>
+						</div>
+
+						<div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+							<FlatButton variant="silver" size="md" icon="play" onClick={handleRematchClick}>
+								Instant Rematch
+							</FlatButton>
+							<FlatButton variant="cream" size="md" icon="arrow" onClick={handleProceedToResult}>
+								View Match Summary
+							</FlatButton>
+							{onBackToMenu && (
+								<FlatButton
+									variant="dark"
+									size="md"
+									icon="arrow"
+									onClick={() => {
+										audioManager.playSfx('click')
+										onBackToMenu()
+									}}
+								>
+									Main Menu
+								</FlatButton>
+							)}
+						</div>
+					</FlatPanel>
+				</div>
+			)}
+
+			{/* Pause Menu Modal (Main Menu, Split Camera, Forfeit) */}
+			{isPauseMenuOpen && (
+				<div
+					onClick={() => {
+						audioManager.playSfx('popup-close')
+						setIsPauseMenuOpen(false)
+					}}
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+				>
+					<div onClick={(e) => e.stopPropagation()} className="w-full max-w-[420px]">
+						<FlatPanel variant="gold" wellVariant="dark" className="w-full" wellClassName="p-6 space-y-5">
+							<div className="flex items-center justify-between border-b border-slate-800 pb-3">
+								<FlatBanner variant="offset-bl">PAUSE MENU</FlatBanner>
+								<FlatButton
+									variant="dark"
+									size="sm"
+									icon="cross"
+									onClick={() => {
+										audioManager.playSfx('popup-close')
+										setIsPauseMenuOpen(false)
+									}}
+								>
+									Resume
+								</FlatButton>
+							</div>
+
+							<div className="flex flex-col gap-3">
+								<FlatButton
+									variant="blue"
+									size="lg"
+									onClick={() => {
+										audioManager.playSfx('click')
+										setCameraView((prev) => (prev === 'panoramic' ? 'split' : 'panoramic'))
+										setIsPauseMenuOpen(false)
+									}}
+									className="w-full justify-center"
+								>
+									{cameraView === 'panoramic' ? 'Split Camera' : 'Full Map Camera'}
+								</FlatButton>
+
+								<FlatButton
+									variant="orange"
+									size="lg"
+									icon="cross"
+									disabled={gameState.status === 'finished'}
+									onClick={() => {
+										setIsPauseMenuOpen(false)
+										handleForfeit(isOnlineMultiplayer ? myPlayerIndex : activeIdx)
+									}}
+									className="w-full justify-center"
+								>
+									Forfeit Match
+								</FlatButton>
+
+								{onBackToMenu && (
+									<FlatButton
+										variant="cream"
+										size="lg"
+										icon="arrow"
+										onClick={() => {
+											audioManager.playSfx('click')
+											setIsPauseMenuOpen(false)
+											onBackToMenu()
+										}}
+										className="w-full justify-center"
+									>
+										Main Menu
+									</FlatButton>
+								)}
+							</div>
+						</FlatPanel>
+					</div>
 				</div>
 			)}
 		</div>

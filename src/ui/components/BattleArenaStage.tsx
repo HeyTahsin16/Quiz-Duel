@@ -1,3 +1,5 @@
+import type {ReactNode} from 'react'
+import type {PlayerPowers} from '../../engine/actions'
 import {
 	BATTLE_MAPS,
 	type BattleMapId,
@@ -14,21 +16,27 @@ export interface BattleArenaStageProps {
 	mapId?: BattleMapId
 	p1Character: CharacterId
 	p2Character: CharacterId
-	p1Name: string
-	p2Name: string
+	p1Name?: string
+	p2Name?: string
 	p1Animation: SpriteAnimationState
 	p2Animation: SpriteAnimationState
-	p1Hp: number
-	p1MaxHp: number
-	p1Block: number
-	p2Hp: number
-	p2MaxHp: number
-	p2Block: number
-	activePlayerIndex: 0 | 1
-	isPlaying: boolean
+	p1Hp?: number
+	p1MaxHp?: number
+	p1Block?: number
+	p1Powers?: PlayerPowers
+	p1PhoenixUsed?: boolean
+	p2Hp?: number
+	p2MaxHp?: number
+	p2Block?: number
+	p2Powers?: PlayerPowers
+	p2PhoenixUsed?: boolean
+	activePlayerIndex?: 0 | 1
+	isPlaying?: boolean
 	onP1AnimationComplete?: () => void
 	onP2AnimationComplete?: () => void
 	showGroundGuides?: boolean
+	topRightAction?: ReactNode
+	fullScreen?: boolean
 }
 
 export function BattleArenaStage({
@@ -39,29 +47,29 @@ export function BattleArenaStage({
 	p2Name,
 	p1Animation,
 	p2Animation,
-	p1Hp,
-	p1MaxHp,
-	p1Block,
-	p2Hp,
-	p2MaxHp,
-	p2Block,
-	activePlayerIndex,
-	isPlaying,
+	activePlayerIndex = 0,
+	isPlaying = false,
 	onP1AnimationComplete,
 	onP2AnimationComplete,
 	showGroundGuides = false,
+	topRightAction,
+	fullScreen = false,
 }: BattleArenaStageProps) {
 	const map = BATTLE_MAPS[mapId]
 	const p1Anchor = getSpriteGroundAnchorTransform(p1Character, p1Animation, 'right')
 	const p2Anchor = getSpriteGroundAnchorTransform(p2Character, p2Animation, 'left')
 	const spriteHeightPercent = ((map.spriteFrameHeight * map.spriteMapScale) / map.height) * 100
+	const p1DisplayName = p1Name || CHARACTERS[p1Character].name
+	const p2DisplayName = p2Name || CHARACTERS[p2Character].name
 
 	return (
-		<div className="flat-frame-silver p-1">
+		<div className={fullScreen ? 'h-screen w-full' : 'w-full'}>
 			<div
-				style={{aspectRatio: `${map.width} / ${map.height}`}}
-				className="relative w-full overflow-hidden bg-[#070a14] select-none"
+				style={fullScreen ? undefined : {aspectRatio: `${map.width} / ${map.height}`}}
+				className={`relative w-full overflow-hidden bg-[#070a14] select-none ${fullScreen ? 'h-full' : ''}`}
 			>
+				{topRightAction && <div className="absolute top-2 right-2 z-30">{topRightAction}</div>}
+
 				{/* Base Battle Map Image (moon.png: 3072x1664 at 4x pixel scale) */}
 				<img
 					src={map.imagePath}
@@ -74,20 +82,18 @@ export function BattleArenaStage({
 				<div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-slate-950/70 to-transparent" />
 				<div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-950/75 to-transparent" />
 
-				{/* Top Arena Map Title Badge using FlatBanner */}
-				<div className="pointer-events-none absolute top-2.5 left-3 z-20">
-					<FlatBanner variant="offset-bl" className="px-2 py-0.5 text-[10px]">
-						<span>{map.name}</span>
-						<span aria-hidden="true">·</span>
-						<span className="font-mono">
-							{map.width}×{map.height}px
-						</span>
-					</FlatBanner>
-				</div>
-
-				{/* Optional Ground Baseline Calibration Guides */}
+				{/* Optional Ground Baseline Calibration Guides (Debug Gallery only) */}
 				{showGroundGuides && (
 					<>
+						<div className="pointer-events-none absolute top-2.5 left-3 z-20">
+							<FlatBanner variant="offset-bl" className="px-2 py-0.5 text-[10px]">
+								<span>{map.name}</span>
+								<span aria-hidden="true">·</span>
+								<span className="font-mono">
+									{map.width}×{map.height}px
+								</span>
+							</FlatBanner>
+						</div>
 						<div
 							style={{top: `${map.p1Spawn.groundYPercent}%`}}
 							className="pointer-events-none absolute left-0 z-30 w-1/2 border-t-2 border-dashed border-amber-400/90"
@@ -109,6 +115,28 @@ export function BattleArenaStage({
 					</>
 				)}
 
+				{/* Player 1 Active Turn Indicator + Character Name Above Head */}
+				<div
+					style={{
+						left: `${map.p1Spawn.xPercent}%`,
+						top: `${map.p1Spawn.groundYPercent - spriteHeightPercent * 0.72}%`,
+						transform: 'translate(-50%, -100%)',
+					}}
+					className="pointer-events-none absolute z-20 flex flex-col items-center gap-1 whitespace-nowrap"
+				>
+					{activePlayerIndex === 0 && isPlaying && (
+						<FlatBanner variant="offset-bl" className="px-2 py-0.5 text-[8px] whitespace-nowrap shadow-md">
+							ACTIVE TURN
+						</FlatBanner>
+					)}
+					<span
+						style={{color: CHARACTERS[p1Character].accentHex}}
+						className="rounded bg-slate-950/80 px-2 py-0.5 font-pixel text-xs shadow-md"
+					>
+						{p1DisplayName}
+					</span>
+				</div>
+
 				{/* Player 1 Sprite Spawn (Left Lower Cobblestone Path: x=592, groundY=1336) */}
 				<div
 					style={{
@@ -129,27 +157,26 @@ export function BattleArenaStage({
 					/>
 				</div>
 
-				{/* Player 1 Ground Nameplate & HP Tag anchored just below P1's feet */}
+				{/* Player 2 Active Turn Indicator + Character Name Above Head */}
 				<div
 					style={{
-						left: `${map.p1Spawn.xPercent}%`,
-						top: `${map.p1Spawn.groundYPercent + 1.4}%`,
-						transform: 'translateX(-50%)',
+						left: `${map.p2Spawn.xPercent}%`,
+						top: `${map.p2Spawn.groundYPercent - spriteHeightPercent * 0.72}%`,
+						transform: 'translate(-50%, -100%)',
 					}}
-					className={`pointer-events-none absolute z-20 flex items-center gap-1.5 px-2 py-0.5 text-[10px] whitespace-nowrap shadow-md ${
-						activePlayerIndex === 0 && isPlaying
-							? 'flat-slot-gold-dark text-amber-200'
-							: 'flat-slot-dark text-slate-200'
-					}`}
+					className="pointer-events-none absolute z-20 flex flex-col items-center gap-1 whitespace-nowrap"
 				>
-					<span className="bg-amber-400 px-1 font-bold text-slate-950">P1</span>
-					<span className="font-semibold" style={{color: CHARACTERS[p1Character].accentHex}}>
-						{p1Name}
+					{activePlayerIndex === 1 && isPlaying && (
+						<FlatBanner variant="offset-bl" className="px-2 py-0.5 text-[8px] whitespace-nowrap shadow-md">
+							ACTIVE TURN
+						</FlatBanner>
+					)}
+					<span
+						style={{color: CHARACTERS[p2Character].accentHex}}
+						className="rounded bg-slate-950/80 px-2 py-0.5 font-pixel text-xs shadow-md"
+					>
+						{p2DisplayName}
 					</span>
-					<span className="font-mono text-emerald-300 tabular-nums">
-						{p1Hp}/{p1MaxHp}
-					</span>
-					{p1Block > 0 && <span className="font-mono text-sky-300 tabular-nums">+{p1Block}B</span>}
 				</div>
 
 				{/* Player 2 Sprite Spawn (Right Elevated Plateau: x=2208, groundY=1080) */}
@@ -170,27 +197,6 @@ export function BattleArenaStage({
 						responsiveMapSize
 						onAnimationComplete={onP2AnimationComplete}
 					/>
-				</div>
-
-				{/* Player 2 Ground Nameplate & HP Tag anchored just below P2's feet */}
-				<div
-					style={{
-						left: `${map.p2Spawn.xPercent}%`,
-						top: `${map.p2Spawn.groundYPercent + 1.4}%`,
-						transform: 'translateX(-50%)',
-					}}
-					className={`pointer-events-none absolute z-20 flex items-center gap-1.5 px-2 py-0.5 text-[10px] whitespace-nowrap shadow-md ${
-						activePlayerIndex === 1 && isPlaying ? 'flat-slot-blue-dark text-sky-200' : 'flat-slot-dark text-slate-200'
-					}`}
-				>
-					<span className="bg-sky-400 px-1 font-bold text-slate-950">P2</span>
-					<span className="font-semibold" style={{color: CHARACTERS[p2Character].accentHex}}>
-						{p2Name}
-					</span>
-					<span className="font-mono text-emerald-300 tabular-nums">
-						{p2Hp}/{p2MaxHp}
-					</span>
-					{p2Block > 0 && <span className="font-mono text-sky-300 tabular-nums">+{p2Block}B</span>}
 				</div>
 			</div>
 		</div>
@@ -233,7 +239,7 @@ export function PlayerMapCropStage({
 	return (
 		<div
 			style={{aspectRatio: '16 / 9'}}
-			className="flat-slot-dark relative my-3 w-full overflow-hidden bg-[#070a14] select-none"
+			className="flat-slot-dark relative mx-auto my-1.5 w-full max-w-[200px] overflow-hidden bg-[#070a14] select-none"
 		>
 			<div
 				style={{
